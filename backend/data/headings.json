@@ -1,0 +1,88 @@
+{
+  "_comment": [
+    "Canonical resume section names mapped to every heading variant seen in",
+    "the wild. Used by app/core/segment.py.",
+    "",
+    "Matching is case-insensitive and punctuation-insensitive: a heading line",
+    "is normalised (lowercased, non-alphanumerics collapsed to single spaces)",
+    "before lookup, so 'WORK EXPERIENCE:' and 'Work-Experience' both resolve.",
+    "",
+    "To add a variant, put it under the canonical key it belongs to. Keep",
+    "variants lowercase and singular/plural as they actually appear."
+  ],
+
+  "CONTACT": [
+    "contact", "contact information", "contact details", "personal details",
+    "personal information", "personal profile"
+  ],
+
+  "SUMMARY": [
+    "summary", "professional summary", "career summary", "profile",
+    "professional profile", "about", "about me", "objective",
+    "career objective", "professional objective", "career goal"
+  ],
+
+  "EDUCATION": [
+    "education", "educational qualification", "educational qualifications",
+    "academic details", "academics", "academic qualification",
+    "academic qualifications", "academic background", "education details",
+    "qualification", "qualifications", "educational background", "schooling"
+  ],
+
+  "EXPERIENCE": [
+    "experience", "work experience", "professional experience",
+    "employment history", "employment", "work history", "career history",
+    "industrial experience", "relevant experience", "internship",
+    "internships", "internship experience", "training", "industrial training"
+  ],
+
+  "PROJECTS": [
+    "projects", "project", "academic projects", "personal projects",
+    "key projects", "project experience", "project work", "major projects",
+    "mini projects", "notable projects", "selected projects"
+  ],
+
+  "SKILLS": [
+    "skills", "technical skills", "key skills", "core skills",
+    "core competencies", "competencies", "skill set", "skills summary",
+    "technical proficiency", "technical proficiencies", "technologies",
+    "tech stack", "areas of expertise", "expertise", "proficiencies",
+    "technical expertise", "it skills", "computer skills"
+  ],
+
+  "CERTIFICATIONS": [
+    "certifications", "certification", "certificates", "certificate",
+    "licenses", "licenses and certifications", "courses", "online courses",
+    "professional development", "trainings and certifications"
+  ],
+
+  "ACHIEVEMENTS": [
+    "achievements", "achievement", "awards", "awards and honors",
+    "awards and honours", "honors", "honours", "accomplishments",
+    "accolades", "recognition", "awards and achievements"
+  ],
+
+  "PUBLICATIONS": [
+    "publications", "publication", "papers", "research papers",
+    "research", "research experience", "patents", "conferences"
+  ],
+
+  "ACTIVITIES": [
+    "activities", "extracurricular", "extracurricular activities",
+    "co curricular activities", "cocurricular activities", "volunteering",
+    "volunteer experience", "leadership", "positions of responsibility",
+    "clubs and societies", "interests", "hobbies", "hobbies and interests"
+  ],
+
+  "LANGUAGES": [
+    "languages", "languages known", "language proficiency", "linguistic skills"
+  ],
+
+  "REFERENCES": [
+    "references", "reference", "referees"
+  ],
+
+  "DECLARATION": [
+    "declaration", "declarations"
+  ]
+}

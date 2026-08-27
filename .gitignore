@@ -1,0 +1,74 @@
+# ---------------------------------------------------------------------------
+# What must never be committed, and why.
+#
+# Two of these matter more than the rest:
+#
+#   backend/storage/  holds uploaded resumes and the database built from them.
+#                     That is other people's personal data - names, phone
+#                     numbers, email addresses, academic records. It does not
+#                     belong in version control, and once pushed it is very
+#                     hard to remove from history. See the consent rules in
+#                     docs/Customer Testing Plan.md.
+#
+#   backend/.env      holds real configuration, and is the file that will hold
+#                     a secret the first time this is deployed anywhere.
+#                     .env.example is committed instead, with every setting
+#                     documented and no real values in it.
+# ---------------------------------------------------------------------------
+
+# --- Personal data and runtime state ---------------------------------------
+backend/storage/
+backend/artifacts/
+
+# --- Configuration ----------------------------------------------------------
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# --- Python -----------------------------------------------------------------
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Node / frontend --------------------------------------------------------
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+
+# --- Logs -------------------------------------------------------------------
+# The backend writes these when started with output redirected. They are local
+# diagnostics, they can contain uploaded text, and they are never useful to
+# anyone else.
+*.log
+*.err
+
+# --- Obsidian ---------------------------------------------------------------
+# The vault's content is committed - it is half the project. Only the
+# per-machine UI state is not: which panes were open, where the cursor was.
+# Committing those produces a merge conflict every time two people open the
+# vault without either of them having changed a note.
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache
+.obsidian/graph.json
+
+# --- Editors and operating systems ------------------------------------------
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store

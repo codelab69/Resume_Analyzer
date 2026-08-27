@@ -1,0 +1,31 @@
+Kiran Anandan
+kiran.anandan@example.com | +91 9876543210 | github.com/kiranexample | linkedin.com/in/kiranexample
+
+SUMMARY
+Final year Computer Science student building backend services and machine learning tools.
+
+EDUCATION
+B.E. Computer Science and Engineering, Anna University, 2022 - 2026
+CGPA: 8.7/10
+
+TECHNICAL SKILLS
+Python, JavaScript, TypeScript, React, FastAPI, Node.js, PostgreSQL, MongoDB, Docker, Git, scikit-learn, Pandas, NumPy, REST API
+
+EXPERIENCE
+Backend Intern, Northwind Systems, Jun 2025 - Aug 2025
+* Built 14 REST API endpoints in FastAPI serving 3000 daily requests
+* Reduced average query time from 480ms to 95ms by adding PostgreSQL indexes
+* Wrote 62 unit tests with Pytest, raising test coverage from 41% to 88%
+* Automated the nightly data export, saving the operations team 6 hours a week
+
+PROJECTS
+Resume Analyzer, Jan 2026 - Present
+* Designed an NLP pipeline extracting skills from PDF resumes with 92% accuracy
+* Deployed a React frontend and a FastAPI backend using Docker on a single host
+
+Fleet Tracker, Aug 2025 - Nov 2025
+* Implemented real-time vehicle tracking for 120 vehicles using WebSockets
+* Responsible for the database schema and the reporting queries
+
+CERTIFICATIONS
+AWS Certified Cloud Practitioner, 2025

@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------------------
+# Backend dependencies.
+#
+# The list is split into three tiers on purpose:
+#
+#   REQUIRED  - the API will not start without these.
+#   PARSERS   - file format readers. Install at least one or uploads fail.
+#   ML EXTRAS - heavier models. The app runs without them by falling back to
+#               deterministic implementations (see app/core/embed.py and
+#               app/core/skills.py). Install them for full accuracy.
+#
+# numpy is pinned below 2.1 because the spaCy / scikit-learn / torch wheels
+# on Windows still lag behind the newest numpy ABI. Unpinning this is the most
+# common cause of a broken environment mid-project.
+# ---------------------------------------------------------------------------
+
+# --- REQUIRED --------------------------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+python-multipart==0.0.20
+
+# --- PARSERS ---------------------------------------------------------------
+PyMuPDF==1.25.1          # primary PDF reader, gives block geometry
+pdfplumber==0.11.4       # fallback PDF reader for table-heavy layouts
+python-docx==1.1.2       # .docx support
+
+# --- ML EXTRAS (optional, see note above) ----------------------------------
+numpy<2.1
+scikit-learn==1.6.0
+rapidfuzz==3.11.0
+sentence-transformers==3.3.1
+spacy==3.8.3
+joblib==1.4.2
+
+# --- DEV / TEST ------------------------------------------------------------
+pytest==8.3.4
+httpx==0.28.1

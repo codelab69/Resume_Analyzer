@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+/*
+  DESIGN SYSTEM
+  =============
+  The product is about a machine reading a document, so the interface is built
+  to look like a document being marked up: paper ground, ink text, a
+  highlighter for matches and a red pen for gaps. That is where the palette
+  comes from, and it is why the accent is a marker yellow rather than the
+  usual product blue.
+
+  Tailwind v4 reads tokens from this @theme block - there is no config file.
+  A token declared here becomes a utility automatically:
+      --color-ink       ->  text-ink, bg-ink, border-ink
+      --font-display    ->  font-display
+
+  DARK MODE
+  ---------
+  Tokens are redefined under .dark further down. Never hardcode a colour in a
+  component; always go through a token, or the component will be unreadable in
+  one of the two themes.
+*/
+
+@theme {
+  /* Paper and ink */
+  --color-paper: #eef0eb;
+  --color-surface: #fafbf7;
+  --color-surface-2: #e4e7df;
+  --color-ink: #181a16;
+  --color-ink-soft: #3d4139;
+  --color-muted: #6c7167;
+  --color-rule: #d2d6cb;
+  --color-rule-strong: #b3b9aa;
+
+  /* The marker set */
+  --color-marker: #e6dc4b;
+  --color-marker-soft: #efe77a;
+  --color-pen: #b23f2c;
+
+  /* Semantic status. Separate from the accent on purpose - a score colour
+     must not be confused with a brand colour. */
+  --color-good: #2e6b52;
+  --color-warn: #8a5f12;
+  --color-bad: #b23f2c;
+
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --radius-card: 2px;
+}
+
+/* Dark theme. Same token names, different values, so every component follows
+   automatically. Contrast is checked against the dark ground, not inverted -
+   a naive inversion makes the marker yellow unreadable. */
+.dark {
+  --color-paper: #131512;
+  --color-surface: #1b1e19;
+  --color-surface-2: #242820;
+  --color-ink: #e9ebe3;
+  --color-ink-soft: #c3c8bb;
+  --color-muted: #8e9488;
+  --color-rule: #2d3129;
+  --color-rule-strong: #454a3e;
+
+  --color-marker: #d6cc45;
+  --color-marker-soft: #514d1a;
+  --color-pen: #e0806c;
+
+  --color-good: #63c39b;
+  --color-warn: #d6a93f;
+  --color-bad: #e0806c;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-rule);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  /* Keyboard focus must always be visible. Removing outlines without a
+     replacement makes the app unusable without a mouse. */
+  :focus-visible {
+    outline: 2px solid var(--color-marker);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-marker);
+    color: #181a16;
+  }
+}
+
+@layer components {
+  /*
+    The highlighter swipe used behind matched skills in the resume view.
+    A background gradient rather than a solid fill, so it reads as a marker
+    stroke over text rather than a coloured box - which is the whole visual
+    idea of the product.
+  */
+  .mark {
+    background-image: linear-gradient(
+      transparent 52%,
+      var(--color-marker-soft) 52%,
+      var(--color-marker-soft) 94%,
+      transparent 94%
+    );
+    padding: 0 0.12em;
+    border-radius: 1px;
+  }
+
+  .mark-active {
+    background-image: linear-gradient(
+      transparent 0%,
+      var(--color-marker) 0%,
+      var(--color-marker) 100%
+    );
+    color: #181a16;
+  }
+
+  .card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
+  }
+
+  .label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    font-weight: 700;
+  }
+}
+
+/*
+  Respect the operating system's reduced-motion setting. Every animation in
+  the app also checks this through motion's useReducedMotion(), but this rule
+  covers CSS transitions that never pass through JavaScript.
+*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

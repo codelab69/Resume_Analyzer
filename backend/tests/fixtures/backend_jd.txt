@@ -1,0 +1,18 @@
+Backend Developer - Northwind Systems, Chennai
+
+We are looking for a backend developer to join our platform team. You will
+design REST endpoints, model data in PostgreSQL, and own services from the
+first commit through to production. We pair regularly and review every change.
+
+Requirements:
+- Strong Python, ideally with FastAPI or Django
+- Comfortable writing SQL against PostgreSQL, including joins and indexes
+- Understands REST API design, status codes and versioning
+- Familiar with Git, code review, and unit testing with Pytest
+- Docker and CI/CD experience is a plus
+- Exposure to Kubernetes and Redis would be an advantage
+- 1+ years of experience, or strong project work
+
+Nice to have:
+- Experience with Redis caching
+- Familiarity with AWS

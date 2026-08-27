@@ -1,0 +1,469 @@
+{
+  "version": "1.0.0",
+  "source": "Hand-written seed corpus. Replace with a real dataset via scripts/import_jobs.py.",
+  "notes": [
+    "26 postings covering every role family the profile classifier needs.",
+    "Each `category` value becomes a role label, so keep them consistent -",
+    "adding a one-off category with a single posting produces a role profile",
+    "built from one sample, which the classifier will then over-fit to.",
+    "",
+    "`experience_years` is the MINIMUM the posting asks for. The recommender",
+    "filters on it so students can hide senior roles."
+  ],
+  "jobs": [
+    {
+      "id": "job-00001",
+      "title": "Backend Developer",
+      "company": "Northwind Systems",
+      "location": "Chennai",
+      "category": "Backend Developer",
+      "employment_type": "Full-time",
+      "experience_years": 0,
+      "description": "Join our platform team building the APIs behind a logistics product used by 400 fleet operators. You will design REST endpoints, model data in PostgreSQL, and own services from first commit to production. We pair regularly and review every change.",
+      "requirements": [
+        "Strong Python and experience with FastAPI, Flask or Django",
+        "Comfortable writing SQL against PostgreSQL, including joins and indexes",
+        "Understands REST API design, status codes and versioning",
+        "Familiar with Git, code review and unit testing with Pytest",
+        "Exposure to Docker and CI/CD pipelines is a plus"
+      ]
+    },
+    {
+      "id": "job-00002",
+      "title": "Junior Backend Engineer",
+      "company": "Trellis Health",
+      "location": "Bengaluru",
+      "category": "Backend Developer",
+      "employment_type": "Full-time",
+      "experience_years": 0,
+      "description": "Build appointment and billing services for a clinic management platform. Small team, high ownership, mentored code review. You will write Java services on Spring Boot and query MySQL directly.",
+      "requirements": [
+        "Java with Spring Boot",
+        "MySQL and database design fundamentals",
+        "Object Oriented Programming and data structures",
+        "REST API development",
+        "Unit testing with JUnit"
+      ]
+    },
+    {
+      "id": "job-00003",
+      "title": "Node.js Backend Developer",
+      "company": "Corvid Labs",
+      "location": "Remote",
+      "category": "Backend Developer",
+      "employment_type": "Full-time",
+      "experience_years": 2,
+      "description": "Own the API layer of a real-time collaboration product. Heavy websocket work, event-driven architecture on Kafka, and a microservices estate running on Kubernetes.",
+      "requirements": [
+        "Node.js and Express.js in production",
+        "TypeScript",
+        "MongoDB and Redis",
+        "Microservices and message queues, ideally Apache Kafka",
+        "Docker and Kubernetes"
+      ]
+    },
+    {
+      "id": "job-00004",
+      "title": "Frontend Developer",
+      "company": "Pallavi Retail Tech",
+      "location": "Chennai",
+      "category": "Frontend Developer",
+      "employment_type": "Full-time",
+      "experience_years": 0,
+      "description": "Build the storefront and merchant dashboard for a commerce platform serving 12,000 small retailers. You will work closely with design and own components end to end, from Figma file to shipped feature.",
+      "requirements": [
+        "React with hooks, and solid JavaScript fundamentals",
+        "HTML and CSS, including responsive design",
+        "Familiarity with TypeScript",
+        "Tailwind CSS or another utility CSS framework",
+        "Understands accessibility basics and cares about it"
+      ]
+    },
+    {
+      "id": "job-00005",
+      "title": "React Developer",
+      "company": "Meridian Studio",
+      "location": "Hyderabad",
+      "category": "Frontend Developer",
+      "employment_type": "Full-time",
+      "experience_years": 1,
+      "description": "Client-facing product studio. You will build marketing sites and web applications in Next.js, with a strong emphasis on performance and animation quality.",
+      "requirements": [
+        "React and Next.js",
+        "TypeScript",
+        "CSS animation or a motion library",
+        "REST API and GraphQL consumption",
+        "Git and collaborative workflow"
+      ]
+    },
+    {
+      "id": "job-00006",
+      "title": "Full Stack Developer",
+      "company": "Kavery Fintech",
+      "location": "Coimbatore",
+      "category": "Full Stack Developer",
+      "employment_type": "Full-time",
+      "experience_years": 1,
+      "description": "Work across the stack on a lending platform: React on the front, Node.js services behind it, PostgreSQL underneath. You will ship features end to end and are expected to be comfortable in all three layers.",
+      "requirements": [
+        "React and JavaScript on the frontend",
+        "Node.js and Express.js on the backend",
+        "PostgreSQL and SQL",
+        "REST API design",
+        "Git, Docker and basic CI/CD",
+        "AWS exposure is welcome"
+      ]
+    },
+    {
+      "id": "job-00007",
+      "title": "MERN Stack Developer",
+      "company": "Bluewave Digital",
+      "location": "Pune",
+      "category": "Full Stack Developer",
+      "employment_type": "Full-time",
+      "experience_years": 0,
+      "description": "Build SaaS products for mid-market clients. MongoDB, Express, React and Node throughout. Freshers with strong project work are encouraged to apply.",
+      "requirements": [
+        "MongoDB",
+        "Express.js and Node.js",
+        "React",
+        "JavaScript and HTML and CSS",
+        "Git and GitHub"
+      ]
+    },
+    {
+      "id": "job-00008",
+      "title": "Python Full Stack Engineer",
+      "company": "Halcyon Analytics",
+      "location": "Remote",
+      "category": "Full Stack Developer",
+      "employment_type": "Full-time",
+      "experience_years": 2,
+      "description": "Own internal analytics tooling end to end. Django and FastAPI services, React frontends, PostgreSQL and Redis. You will also help shape our deployment story on AWS.",
+      "requirements": [
+        "Python with Django or FastAPI",
+        "React and TypeScript",
+        "PostgreSQL and Redis",
+        "Docker and AWS",
+        "Test Driven Development"
+      ]
+    },
+    {
+      "id": "job-00009",
+      "title": "Data Scientist",
+      "company": "Arclight Retail Group",
+      "location": "Bengaluru",
+      "category": "Data Scientist",
+      "employment_type": "Full-time",
+      "experience_years": 2,
+      "description": "Forecast demand across 900 stores and build the pricing models behind our markdown engine. You will own problems from framing through to a deployed model, working directly with category managers.",
+      "requirements": [
+        "Python with Pandas, NumPy and scikit-learn",
+        "Statistics, hypothesis testing and A/B Testing",
+        "Machine Learning including feature engineering and model evaluation",
+        "SQL for data extraction",
+        "Time Series Analysis and forecasting",
+        "Data Visualization, and the ability to present findings to non-technical stakeholders"
+      ]
+    },
+    {
+      "id": "job-00010",
+      "title": "Junior Data Scientist",
+      "company": "Sundara Insurance",
+      "location": "Chennai",
+      "category": "Data Scientist",
+      "employment_type": "Full-time",
+      "experience_years": 0,
+      "description": "Support the claims analytics team. Build classification models for fraud triage, clean messy data, and produce the reporting the underwriting team relies on.",
+      "requirements": [
+        "Python, Pandas and scikit-learn",
+        "Statistics and probability fundamentals",
+        "SQL",
+        "Jupyter Notebook",
+        "Machine Learning coursework or project experience"
+      ]
+    },
+    {
+      "id": "job-00011",
+      "title": "Data Analyst",
+      "company": "Northwind Systems",
+      "location": "Chennai",
+      "category": "Data Analyst",
+      "employment_type": "Full-time",
+      "experience_years": 0,
+      "description": "Turn operational data into decisions. You will build dashboards, run ad-hoc analysis for the operations team, and own our weekly performance reporting.",
+      "requirements": [
+        "Strong SQL",
+        "Excel including pivot tables and lookups",
+        "Power BI or Tableau",
+        "Python with Pandas is a plus",
+        "Data Visualization and clear written communication"
+      ]
+    },
+    {
+      "id": "job-00012",
+      "title": "Business Intelligence Analyst",
+      "company": "Trellis Health",
+      "location": "Bengaluru",
+      "category": "Data Analyst",
+      "employment_type": "Full-time",
+      "experience_years": 1,
+      "description": "Own the reporting layer for a healthcare platform. Model data in the warehouse, build self-serve dashboards, and work with clinical operations to define the metrics that matter.",
+      "requirements": [
+        "SQL and data modelling",
+        "Tableau or Power BI",
+        "Data Warehousing concepts",
+        "ETL and data pipelines",
+        "Stakeholder Management"
+      ]
+    },
+    {
+      "id": "job-00013",
+      "title": "Machine Learning Engineer",
+      "company": "Corvid Labs",
+      "location": "Remote",
+      "category": "Machine Learning Engineer",
+      "employment_type": "Full-time",
+      "experience_years": 2,
+      "description": "Take models from notebook to production. You will own training pipelines, serving infrastructure and the monitoring that tells us when a model has drifted.",
+      "requirements": [
+        "Python and PyTorch or TensorFlow",
+        "Deep Learning fundamentals",
+        "MLOps: model deployment, versioning and monitoring",
+        "Docker and Kubernetes",
+        "AWS or Google Cloud Platform",
+        "Strong software engineering practice, not just notebooks"
+      ]
+    },
+    {
+      "id": "job-00014",
+      "title": "NLP Engineer",
+      "company": "Verba AI",
+      "location": "Hyderabad",
+      "category": "Machine Learning Engineer",
+      "employment_type": "Full-time",
+      "experience_years": 1,
+      "description": "Build the language understanding layer of a customer support product: intent classification, entity extraction, and a retrieval system over client knowledge bases.",
+      "requirements": [
+        "Natural Language Processing",
+        "Python with spaCy, NLTK or Hugging Face transformers",
+        "Large Language Models and Prompt Engineering",
+        "RAG and Vector Databases",
+        "scikit-learn and model evaluation",
+        "FastAPI for serving"
+      ]
+    },
+    {
+      "id": "job-00015",
+      "title": "Computer Vision Engineer",
+      "company": "Anvil Robotics",
+      "location": "Pune",
+      "category": "Machine Learning Engineer",
+      "employment_type": "Full-time",
+      "experience_years": 2,
+      "description": "Work on the perception stack for warehouse robots. Object detection, pose estimation and the data pipeline that feeds them.",
+      "requirements": [
+        "Computer Vision and OpenCV",
+        "Deep Learning with PyTorch",
+        "Python and NumPy",
+        "Image processing fundamentals",
+        "C++ is a strong advantage"
+      ]
+    },
+    {
+      "id": "job-00016",
+      "title": "DevOps Engineer",
+      "company": "Kavery Fintech",
+      "location": "Coimbatore",
+      "category": "DevOps Engineer",
+      "employment_type": "Full-time",
+      "experience_years": 2,
+      "description": "Own the path from commit to production. You will run our Kubernetes estate, keep the pipelines fast, and be the person who makes deploys boring.",
+      "requirements": [
+        "Docker and Kubernetes",
+        "CI/CD with Jenkins or GitHub Actions",
+        "Terraform or Ansible",
+        "AWS",
+        "Linux administration and Shell Scripting",
+        "Prometheus and Grafana for monitoring"
+      ]
+    },
+    {
+      "id": "job-00017",
+      "title": "Cloud Engineer",
+      "company": "Halcyon Analytics",
+      "location": "Remote",
+      "category": "Cloud Engineer",
+      "employment_type": "Full-time",
+      "experience_years": 1,
+      "description": "Design and run cloud infrastructure for a data platform. Mostly AWS, some Google Cloud, everything defined as code.",
+      "requirements": [
+        "AWS core services",
+        "Terraform",
+        "Cloud Computing and serverless architecture",
+        "Linux",
+        "Docker",
+        "Networking fundamentals"
+      ]
+    },
+    {
+      "id": "job-00018",
+      "title": "Site Reliability Engineer",
+      "company": "Bluewave Digital",
+      "location": "Bengaluru",
+      "category": "DevOps Engineer",
+      "employment_type": "Full-time",
+      "experience_years": 3,
+      "description": "Keep a high-traffic platform up. Capacity planning, incident response, and the automation that stops the same incident happening twice.",
+      "requirements": [
+        "Kubernetes at scale",
+        "Prometheus, Grafana and alerting",
+        "Python or Go for tooling",
+        "Linux internals",
+        "CI/CD",
+        "Terraform"
+      ]
+    },
+    {
+      "id": "job-00019",
+      "title": "Android Developer",
+      "company": "Pallavi Retail Tech",
+      "location": "Chennai",
+      "category": "Mobile Developer",
+      "employment_type": "Full-time",
+      "experience_years": 1,
+      "description": "Build the merchant app used daily by 12,000 retailers. Offline-first, heavy on local storage and sync.",
+      "requirements": [
+        "Android Development with Kotlin",
+        "REST API integration",
+        "SQLite or Room for local storage",
+        "Firebase",
+        "Git"
+      ]
+    },
+    {
+      "id": "job-00020",
+      "title": "Flutter Developer",
+      "company": "Meridian Studio",
+      "location": "Remote",
+      "category": "Mobile Developer",
+      "employment_type": "Contract",
+      "experience_years": 1,
+      "description": "Cross-platform app development for client projects. You will own app architecture and ship to both stores.",
+      "requirements": [
+        "Flutter and Dart",
+        "REST API integration",
+        "Firebase",
+        "State management patterns",
+        "iOS Development or Android Development experience"
+      ]
+    },
+    {
+      "id": "job-00021",
+      "title": "QA Automation Engineer",
+      "company": "Sundara Insurance",
+      "location": "Chennai",
+      "category": "QA Engineer",
+      "employment_type": "Full-time",
+      "experience_years": 1,
+      "description": "Build and own the automated test suite for our policy platform. You will write the tests, run them in CI, and be the person who decides whether a release ships.",
+      "requirements": [
+        "Selenium or Playwright",
+        "Java or Python",
+        "Unit Testing and Integration Testing",
+        "CI/CD pipelines",
+        "SQL for test data",
+        "API testing with Postman"
+      ]
+    },
+    {
+      "id": "job-00022",
+      "title": "Software Test Engineer",
+      "company": "Anvil Robotics",
+      "location": "Pune",
+      "category": "QA Engineer",
+      "employment_type": "Full-time",
+      "experience_years": 0,
+      "description": "Manual and automated testing of robotics control software. Freshers welcome; we will teach you the automation side.",
+      "requirements": [
+        "Understanding of software testing fundamentals",
+        "Test case design and defect reporting",
+        "Jira",
+        "Basic Python or Java",
+        "Attention to detail and clear written communication"
+      ]
+    },
+    {
+      "id": "job-00023",
+      "title": "Cybersecurity Analyst",
+      "company": "Kavery Fintech",
+      "location": "Coimbatore",
+      "category": "Cybersecurity Analyst",
+      "employment_type": "Full-time",
+      "experience_years": 1,
+      "description": "Monitor, investigate and respond. You will run our vulnerability management programme and lead incident response for a regulated fintech.",
+      "requirements": [
+        "Cybersecurity fundamentals and network security",
+        "Penetration Testing and vulnerability assessment",
+        "Wireshark and Burp Suite",
+        "Linux",
+        "Cryptography basics",
+        "Python for scripting"
+      ]
+    },
+    {
+      "id": "job-00024",
+      "title": "Security Engineer",
+      "company": "Corvid Labs",
+      "location": "Remote",
+      "category": "Cybersecurity Analyst",
+      "employment_type": "Full-time",
+      "experience_years": 3,
+      "description": "Embed security into the engineering process: threat modelling, secure code review, and hardening our cloud footprint.",
+      "requirements": [
+        "Application security and secure Code Review",
+        "AWS security services",
+        "Cryptography",
+        "Python or Go",
+        "Docker and Kubernetes security",
+        "Penetration Testing"
+      ]
+    },
+    {
+      "id": "job-00025",
+      "title": "UI/UX Designer",
+      "company": "Meridian Studio",
+      "location": "Hyderabad",
+      "category": "UI/UX Designer",
+      "employment_type": "Full-time",
+      "experience_years": 1,
+      "description": "Design product interfaces from research through to a handed-off component library. You will work directly with engineers and are expected to understand what is buildable.",
+      "requirements": [
+        "UI/UX Design and interaction design",
+        "Figma",
+        "Responsive Design",
+        "Accessibility and WCAG basics",
+        "Enough HTML and CSS to talk to developers",
+        "Presentation Skills"
+      ]
+    },
+    {
+      "id": "job-00026",
+      "title": "Business Analyst",
+      "company": "Trellis Health",
+      "location": "Chennai",
+      "category": "Business Analyst",
+      "employment_type": "Full-time",
+      "experience_years": 1,
+      "description": "Sit between clinical operations and engineering. Gather requirements, write specifications, and make sure what gets built is what was needed.",
+      "requirements": [
+        "Requirements gathering and Technical Writing",
+        "SQL and Excel",
+        "Agile and Jira",
+        "Data Analysis",
+        "Stakeholder Management and Communication",
+        "Process mapping"
+      ]
+    }
+  ]
+}

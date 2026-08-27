@@ -1,0 +1,429 @@
+"""Score a resume against a job description.
+
+THE MODEL
+---------
+    Match = 100 * ( w_sem * S_sem + w_skill * S_skill
+                  + w_lex * S_lex + w_fit  * S_fit )
+
+Four independent signals. Each one alone is weak and each one fails in a
+different direction, which is exactly why the combination is defensible:
+
+    S_sem    meaning        catches paraphrase, misses unseen tool names
+    S_skill  skill overlap  catches must-haves, misses phrasing outside ontology
+    S_lex    keyword        mirrors what real ATS software does, misses synonyms
+    S_fit    eligibility    catches hard gates, says nothing about ability
+
+The weights live in app/config.py and are validated to sum to 1.0. They are a
+starting point, not a result - tune them against hand-labelled pairs with
+scripts/tune_weights.py and report the correlation before and after.
+
+Every sub-score is returned alongside the total. Showing one number hides the
+only actionable information: "81 on semantic fit, 34 on skill overlap" tells
+a student what to do, "62" does not.
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+
+from app.core import embed, skills
+from app.core.entities import DEGREE_LEVEL, Entities
+from app.core.text_utils import clamp, content_tokens, pct
+
+# Gap severity thresholds, expressed as a fraction of the highest-weighted
+# missing skill. A skill weighted at 75%+ of the top one is Critical.
+CRITICAL_RATIO = 0.75
+IMPORTANT_RATIO = 0.40
+
+# How many years of experience count as "fully meeting" an open requirement
+# when the job does not state a number. Student-facing default.
+DEFAULT_EXPECTED_YEARS = 1.0
+
+
+@dataclass
+class SubScores:
+    """The four signals, each 0..1."""
+
+    semantic: float = 0.0
+    skill: float = 0.0
+    lexical: float = 0.0
+    fit: float = 0.0
+
+
+@dataclass
+class SkillGap:
+    """One skill the job wants that the resume does not show."""
+
+    name: str
+    category: str
+    weight: float          # importance within this job description, 0..1
+    severity: str          # "critical" | "important" | "nice_to_have"
+
+
+@dataclass
+class MatchResult:
+    """Everything the match screen needs."""
+
+    score: int                                    # 0..100
+    sub_scores: SubScores
+    matched_skills: list[str] = field(default_factory=list)
+    missing_skills: list[SkillGap] = field(default_factory=list)
+    extra_skills: list[str] = field(default_factory=list)
+    jd_skill_count: int = 0
+    semantic_backend: str = "hashing"
+    notes: list[str] = field(default_factory=list)
+
+    @property
+    def verdict(self) -> str:
+        """Plain-language band. Used for the coloured pill in the UI."""
+        if self.score >= 75:
+            return "strong"
+        if self.score >= 55:
+            return "promising"
+        if self.score >= 35:
+            return "stretch"
+        return "weak"
+
+
+# ---------------------------------------------------------------------------
+# S_sem - semantic similarity
+# ---------------------------------------------------------------------------
+
+
+def semantic_score(resume_text: str, jd_text: str) -> float:
+    """Chunk-level similarity, max-pooled per job requirement.
+
+    For every requirement line in the job description, find the single best
+    matching line anywhere in the resume, then average those bests. That asks
+    the right question - "is each thing they want covered somewhere?" - rather
+    than "are these two documents alike on average", which a whole-document
+    cosine measures and which rewards padding.
+    """
+    resume_chunks = embed.chunk(resume_text)
+    jd_chunks = embed.chunk(jd_text)
+    if not resume_chunks or not jd_chunks:
+        return 0.0
+
+    # One batched call per side. Encoding in a loop is an order of magnitude
+    # slower on the transformer backend.
+    resume_vectors = embed.encode(resume_chunks)
+    jd_vectors = embed.encode(jd_chunks)
+
+    best_per_requirement = [
+        max(embed.cosine(jd_vector, resume_vector) for resume_vector in resume_vectors)
+        for jd_vector in jd_vectors
+    ]
+    return clamp(sum(best_per_requirement) / len(best_per_requirement))
+
+
+# ---------------------------------------------------------------------------
+# S_skill - weighted skill overlap
+# ---------------------------------------------------------------------------
+
+
+def jd_skill_weights(jd_text: str, jd_hits: list[skills.SkillHit]) -> dict[str, float]:
+    """Importance of each skill *within this job description*.
+
+    A skill mentioned three times and listed under "Requirements" matters more
+    than one mentioned once in passing. Weight is sublinear term frequency,
+    normalised so the most-mentioned skill is 1.0:
+
+        weight(s) = (1 + log(count_s)) / max_over_skills(1 + log(count))
+
+    Sublinear because the tenth mention of "Python" does not make it ten times
+    more important than a single mention of "Kubernetes".
+    """
+    counts: dict[str, int] = {}
+    for hit in jd_hits:
+        counts[hit.name] = counts.get(hit.name, 0) + 1
+
+    if not counts:
+        return {}
+
+    raw = {name: 1.0 + math.log(count) for name, count in counts.items()}
+    peak = max(raw.values())
+    return {name: value / peak for name, value in raw.items()}
+
+
+def skill_score(
+    resume_skills: set[str], weights: dict[str, float]
+) -> tuple[float, list[str], list[SkillGap]]:
+    """Weighted coverage of the job's skills by the resume.
+
+        S_skill = sum(weight of matched skills) / sum(weight of all JD skills)
+
+    This is weighted recall, not Jaccard. Deliberately: a candidate is not
+    penalised for knowing things the job did not ask for. Those surplus skills
+    are still surfaced separately as `extra_skills` because they are useful to
+    the student, but they must not drag the score down.
+    """
+    if not weights:
+        # The job description named no recognised skill. Returning 0 would be
+        # misleading, so return a neutral 0.5 and flag it upstream.
+        return 0.5, [], []
+
+    matched: list[str] = []
+    missing: list[SkillGap] = []
+    covered_weight = 0.0
+    total_weight = sum(weights.values())
+
+    peak = max(weights.values())
+    index = skills.load_index()
+
+    for name, weight in sorted(weights.items(), key=lambda kv: -kv[1]):
+        if name in resume_skills:
+            matched.append(name)
+            covered_weight += weight
+            continue
+
+        ratio = weight / peak if peak else 0.0
+        if ratio >= CRITICAL_RATIO:
+            severity = "critical"
+        elif ratio >= IMPORTANT_RATIO:
+            severity = "important"
+        else:
+            severity = "nice_to_have"
+
+        missing.append(
+            SkillGap(
+                name=name,
+                category=index.categories.get(name, "other"),
+                weight=round(weight, 3),
+                severity=severity,
+            )
+        )
+
+    return clamp(covered_weight / total_weight), matched, missing
+
+
+# ---------------------------------------------------------------------------
+# S_lex - lexical similarity
+# ---------------------------------------------------------------------------
+
+
+def lexical_score(resume_text: str, jd_text: str) -> float:
+    """TF-IDF cosine over the two documents.
+
+    IDF is computed from this pair alone, which is the standard pairwise
+    formulation: a term appearing in both documents gets a lower weight than
+    one appearing in only one, so shared rare words drive the score.
+
+        idf(t) = log((1 + N) / (1 + df(t))) + 1     with N = 2
+
+    This deliberately mirrors what keyword-based applicant tracking systems
+    actually do, which is why it earns its 20% of the total even though it is
+    the least intelligent of the four signals.
+
+    IMPROVEMENT PATH: compute IDF over the job corpus instead of the pair.
+    That makes weights reflect the whole labour market rather than two
+    documents. See the project docs for the experiment.
+    """
+    resume_terms = _term_frequencies(resume_text)
+    jd_terms = _term_frequencies(jd_text)
+    if not resume_terms or not jd_terms:
+        return 0.0
+
+    vocabulary = set(resume_terms) | set(jd_terms)
+    resume_vector: dict[str, float] = {}
+    jd_vector: dict[str, float] = {}
+
+    for term in vocabulary:
+        document_frequency = (term in resume_terms) + (term in jd_terms)
+        idf = math.log((1 + 2) / (1 + document_frequency)) + 1.0
+        if term in resume_terms:
+            resume_vector[term] = resume_terms[term] * idf
+        if term in jd_terms:
+            jd_vector[term] = jd_terms[term] * idf
+
+    return _sparse_cosine(resume_vector, jd_vector)
+
+
+def _term_frequencies(text: str) -> dict[str, float]:
+    """Sublinear term frequency, 1 + log(count)."""
+    counts: dict[str, int] = {}
+    for token in content_tokens(text):
+        counts[token] = counts.get(token, 0) + 1
+    return {term: 1.0 + math.log(count) for term, count in counts.items()}
+
+
+def _sparse_cosine(a: dict[str, float], b: dict[str, float]) -> float:
+    """Cosine similarity of two sparse term vectors."""
+    if not a or not b:
+        return 0.0
+    # Iterate the smaller side; the intersection is what matters.
+    smaller, larger = (a, b) if len(a) <= len(b) else (b, a)
+    dot = sum(value * larger.get(term, 0.0) for term, value in smaller.items())
+    norm_a = math.sqrt(sum(v * v for v in a.values()))
+    norm_b = math.sqrt(sum(v * v for v in b.values()))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return clamp(dot / (norm_a * norm_b))
+
+
+# ---------------------------------------------------------------------------
+# S_fit - hard eligibility
+# ---------------------------------------------------------------------------
+
+_YEARS_PATTERNS = [
+    r"(\d+)\s*\+?\s*(?:-|to)\s*\d+\s*(?:years?|yrs?)",   # "2-4 years"
+    r"(\d+)\s*\+\s*(?:years?|yrs?)",                      # "3+ years"
+    r"(?:minimum|min|at least)\s*(\d+)\s*(?:years?|yrs?)",
+    r"(\d+)\s*(?:years?|yrs?)",                           # "3 years"
+]
+
+
+def required_years(jd_text: str) -> float | None:
+    """Smallest stated experience requirement, or None if unstated.
+
+    Smallest, not largest: "2-4 years" is a range whose floor is the actual
+    gate. Taking the top of the range would fail candidates the job would
+    happily interview.
+    """
+    import re
+
+    lowered = jd_text.lower()
+    found: list[float] = []
+    for pattern in _YEARS_PATTERNS:
+        for match in re.finditer(pattern, lowered):
+            try:
+                value = float(match.group(1))
+            except (ValueError, IndexError):
+                continue
+            if 0 < value <= 40:          # reject years that are really dates
+                found.append(value)
+    return min(found) if found else None
+
+
+def _required_degree_level(jd_text: str) -> int:
+    """Highest degree level named in the job description, 0 if none."""
+    import re
+
+    from app.core.entities import DEGREES
+
+    levels = [
+        DEGREE_LEVEL.get(name, 0)
+        for name, pattern in DEGREES
+        if re.search(pattern, jd_text, re.I)
+    ]
+    return max(levels) if levels else 0
+
+
+def fit_score(entities: Entities, jd_text: str) -> tuple[float, list[str]]:
+    """Hard eligibility: experience duration and degree level.
+
+    Returns the score and any human-readable notes explaining a shortfall,
+    which the UI shows verbatim.
+    """
+    notes: list[str] = []
+    parts: list[float] = []
+
+    wanted_years = required_years(jd_text)
+    expected = wanted_years if wanted_years is not None else DEFAULT_EXPECTED_YEARS
+    have_years = entities.experience_years
+
+    if expected <= 0:
+        parts.append(1.0)
+    else:
+        ratio = clamp(have_years / expected)
+        parts.append(ratio)
+        if wanted_years is not None and have_years < wanted_years:
+            notes.append(
+                f"This role asks for {wanted_years:g} years of experience and "
+                f"the resume shows {have_years:g}. Internships and dated "
+                f"project work both count - make sure every one has a date range."
+            )
+
+    wanted_level = _required_degree_level(jd_text)
+    if wanted_level == 0:
+        parts.append(1.0)
+    else:
+        have_level = entities.degree_level
+        if have_level >= wanted_level:
+            parts.append(1.0)
+        elif have_level == 0:
+            parts.append(0.3)
+            notes.append(
+                "No degree could be detected in the resume. Add an EDUCATION "
+                "section with the qualification written out, for example "
+                "'B.E. Computer Science'."
+            )
+        else:
+            # One level short scores 0.6, two or more scores 0.3.
+            parts.append(0.6 if wanted_level - have_level == 1 else 0.3)
+
+    return clamp(sum(parts) / len(parts)), notes
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
+
+
+def match(
+    resume_text: str,
+    resume_skills: list[str],
+    entities: Entities,
+    jd_text: str,
+    weights: dict[str, float] | None = None,
+) -> MatchResult:
+    """Score one resume against one job description.
+
+    Args:
+        resume_text: full resume text, used for the semantic and lexical parts.
+        resume_skills: canonical skill names already extracted from the resume.
+            Passed in rather than re-extracted so a cached resume analysis is
+            not thrown away on every new job description.
+        entities: parsed facts, used by the eligibility sub-score.
+        jd_text: the job description, raw.
+        weights: override for the four weights. Defaults to app config.
+    """
+    from app.config import settings
+
+    active = weights or settings.match_weights
+
+    jd_hits = skills.find_skills(jd_text)
+    weights_by_skill = jd_skill_weights(jd_text, jd_hits)
+    resume_skill_set = set(resume_skills)
+
+    s_sem = semantic_score(resume_text, jd_text)
+    s_skill, matched, missing = skill_score(resume_skill_set, weights_by_skill)
+    s_lex = lexical_score(resume_text, jd_text)
+    s_fit, fit_notes = fit_score(entities, jd_text)
+
+    total = (
+        active["semantic"] * s_sem
+        + active["skill"] * s_skill
+        + active["lexical"] * s_lex
+        + active["fit"] * s_fit
+    )
+
+    notes = list(fit_notes)
+    if not weights_by_skill:
+        notes.append(
+            "No recognised skills were found in this job description, so the "
+            "skill-overlap part of the score is neutral. Paste the full "
+            "posting including the requirements list for an accurate match."
+        )
+    if not embed.is_semantic():
+        notes.append(
+            "Semantic matching is running in word-overlap mode because the "
+            "sentence embedding model is not loaded. Scores are still "
+            "comparable to each other but are less sensitive to paraphrasing."
+        )
+
+    return MatchResult(
+        score=pct(total),
+        sub_scores=SubScores(
+            semantic=round(s_sem, 4),
+            skill=round(s_skill, 4),
+            lexical=round(s_lex, 4),
+            fit=round(s_fit, 4),
+        ),
+        matched_skills=matched,
+        missing_skills=missing,
+        extra_skills=sorted(resume_skill_set - set(weights_by_skill)),
+        jd_skill_count=len(weights_by_skill),
+        semantic_backend=embed.backend(),
+        notes=notes,
+    )

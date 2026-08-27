@@ -1,0 +1,44 @@
+# Normalise line endings.
+#
+# This project is developed on Windows and expected to run on Linux and macOS
+# too. Without this file, whichever machine commits first decides the line
+# endings for everyone, and a later commit from a different OS shows every line
+# of a file as changed - which buries real changes in the diff.
+#
+# `text=auto` stores everything as LF in the repository and converts to the
+# platform's native ending in the working copy. Nobody has to configure
+# core.autocrlf themselves.
+* text=auto
+
+# Files that must keep LF even on Windows. Shell scripts fail outright with
+# CRLF, and .env is read line by line.
+*.sh        text eol=lf
+*.env       text eol=lf
+*.env.*     text eol=lf
+
+# Windows-only scripts, kept as CRLF so they open correctly in Notepad.
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Binary: never convert, never diff as text.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.docx      binary
+*.db        binary
+*.joblib    binary
+*.woff      binary
+*.woff2     binary
+
+# Generated files. Collapsing these keeps a pull request diff readable - they
+# are still committed, just not shown by default on GitHub.
+package-lock.json    linguist-generated=true
+
+# The docs folder is a real part of the project, not an afterthought. Without
+# this GitHub reports the repository as mostly Markdown and hides the language
+# breakdown that actually describes it.
+docs/**              linguist-documentation=true
