@@ -122,7 +122,9 @@ the first heading from the lexicon is seen, because otherwise a candidate's own 
 sitting alone in title case at the top of the page, gets classified as a section
 heading.
 
-See [[Section Segmentation]] for the four false-positive traps and how each is closed.
+See [[Section Segmentation]] for the six false-positive traps and how each is closed.
+It was four until 2026-08-27; writing the note found two more, and both were shredding
+real resumes rather than merely mis-labelling them.
 
 ### 3 · Entities — `entities.py`
 

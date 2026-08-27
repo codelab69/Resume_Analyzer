@@ -86,11 +86,11 @@ higher.
 
 ### Section segmentation · [[Section Segmentation]]
 
-A heading is recognised either from the lexicon (133 variants across 13 canonical
+A heading is recognised either from the lexicon (124 variants across 13 canonical
 sections) or structurally — ALL CAPS, or Title Case of two or more words, short, no
 sentence punctuation.
 
-Four false-positive traps, each of which was a real bug:
+Six false-positive traps, each of which was a real bug:
 
 | Trap | Example | Guard |
 |---|---|---|
@@ -98,9 +98,16 @@ Four false-positive traps, each of which was a real bug:
 | Numeric lines | `2022 – 2026` | Reject if >25% of characters are digits |
 | The candidate's own name | `Kiran Anandan` | Structural detection stays **off** until the first lexicon heading is seen |
 | Single capitalised words | `Python` | Title Case requires ≥2 words; ALL CAPS may be one |
+| **An acronym in a skills list** | `AWS`, `REST API` | `_is_content_not_heading` — it opens nothing, or continues a run |
+| **A job title** | `Backend Intern, Northwind Systems` | `_is_content_not_heading` — it sits directly under a heading |
 
 The third is the subtle one. Everything above the first real heading is the contact
 preamble by definition, so nothing up there can be a heading.
+
+The last two were found on 2026-08-27, while writing [[Section Segmentation]]. Both were
+worse than mis-labelling: the acronym trap shredded a skills list into five empty sections,
+and the job-title trap left `EXPERIENCE` empty, which made ATS rule 2 tell students to add
+a section their resume already had. Recorded as S4.3a on the [[Sprint Board]].
 
 ---
 

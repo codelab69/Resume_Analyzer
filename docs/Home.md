@@ -37,7 +37,7 @@ This vault is the written half of the project. Open it in [Obsidian](https://obs
 
 - [[Algorithms Overview]] — the map, and which stage owns which decision
 - [[Text Extraction]] — reading PDFs, DOCX and the layout facts
-- [[Section Segmentation]] — finding headings without a model
+- [[Section Segmentation]] — finding headings without a model, and the six traps that look like one
 - [[Entity Extraction]] — contact details, education, experience duration
 - [[Skill Matching]] — the phrase index and the ambiguity problem
 - [[Role Classification]] — the supervised model and its runtime fallback

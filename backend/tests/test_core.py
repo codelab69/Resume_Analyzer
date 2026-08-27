@@ -9,12 +9,15 @@ skills, embeddings.
 
 from __future__ import annotations
 
+import json
+import pathlib
+import re
 from types import SimpleNamespace
 
 import pytest
 
 from app.core import (
-    embed, entities, extract, optional, pipeline, segment, skills, text_utils,
+    ats, embed, entities, extract, optional, pipeline, segment, skills, text_utils,
 )
 
 
@@ -378,6 +381,181 @@ class TestSegment:
 
     def test_get_returns_empty_string_for_a_missing_section(self):
         assert segment.segment("SKILLS\nPython").get("PUBLICATIONS") == ""
+
+
+class TestDocumentedCounts:
+    """The numbers in the README must be the numbers in the data files.
+
+    The README states four counts, and the project's own working agreement is
+    that counts are read out of the data rather than remembered. One of them was
+    not: it claimed 133 heading variants against an actual 124. Nothing broke,
+    which is the point - a wrong number in the front-door document is invisible
+    until someone checks, and nobody checks a number that looks plausible.
+
+    This test is the check. It fails when the data and the README disagree,
+    which is the only time either of them is wrong.
+    """
+
+    README = pathlib.Path(__file__).resolve().parents[2] / "README.md"
+
+    def _claimed(self, pattern: str) -> int:
+        text = self.README.read_text(encoding="utf-8")
+        match = re.search(pattern, text)
+        assert match, f"README no longer states a count matching {pattern!r}"
+        return int(match.group(1))
+
+    def test_skill_count_matches_the_data(self):
+        data = json.loads(
+            (segment.DATA_DIR / "skills.json").read_text(encoding="utf-8")
+        )
+        assert self._claimed(r"\*\*(\d+) skills\*\*") == len(data["skills"])
+
+    def test_job_posting_count_matches_the_data(self):
+        data = json.loads(
+            (segment.DATA_DIR / "jobs.json").read_text(encoding="utf-8")
+        )
+        assert self._claimed(r"\*\*(\d+) job postings\*\*") == len(data["jobs"])
+
+    def test_heading_variant_count_matches_the_lexicon(self):
+        # The one that was wrong. 124 distinct keys after normalising, not the
+        # 137 raw entries in the file - 13 canonical names normalise onto a
+        # variant already listed under them.
+        claimed = self._claimed(r"\*\*(\d+) section-heading variants\*\*")
+        assert claimed == len(segment._lexicon())
+
+    def test_action_verb_count_matches_the_data(self):
+        verbs = [
+            line for line in
+            (segment.DATA_DIR / "action_verbs.txt").read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+        assert self._claimed(r"\*\*(\d+) action verbs\*\*") == len(verbs)
+
+
+class TestHeadingShapedContent:
+    """Lines that look like headings but are not.
+
+    Structural heading detection accepts any short ALL CAPS or Title Case line.
+    Two extremely common things in a resume have that exact shape and are not
+    headings: an acronym in a skills list, and a job title. Both used to open
+    sections, and both cost the student real content or real points.
+    """
+
+    ACRONYM_SKILLS = """Kiran Anandan
+kiran@example.com
+
+SKILLS
+Python
+SQL
+HTML
+CSS
+AWS
+REST API
+Docker
+
+EDUCATION
+B.E. Computer Science
+"""
+
+    SHORT_JOB_TITLE = """Kiran Anandan
+kiran@example.com
+
+SKILLS
+Python, FastAPI, Docker
+
+EXPERIENCE
+Backend Intern, Northwind Systems
+Jun 2025 - Aug 2025
+* Built 14 REST API endpoints serving 3000 daily requests
+
+PROJECTS
+Resume Analyzer
+* Designed an NLP pipeline extracting skills from PDF resumes
+
+EDUCATION
+B.E. Computer Science
+"""
+
+    def test_a_skills_list_of_acronyms_stays_in_one_section(self):
+        result = segment.segment(self.ACRONYM_SKILLS)
+        skills = result.get("SKILLS").splitlines()
+        assert skills == ["Python", "SQL", "HTML", "CSS", "AWS", "REST API", "Docker"]
+        # Each acronym used to open its own empty section.
+        assert not [n for n in result.names if n.startswith("OTHER:")]
+
+    def test_the_last_entry_of_a_list_is_not_a_heading(self):
+        """`REST API` is followed by `Docker`, which is not heading-shaped.
+
+        So the "would open an empty section" signal cannot see it. The signal
+        that catches it is that the line before it was already read as a list
+        entry - without which this one acronym still splits the section.
+        """
+        result = segment.segment(self.ACRONYM_SKILLS)
+        assert "REST API" in result.get("SKILLS")
+
+    def test_the_first_line_of_a_section_is_content_not_a_heading(self):
+        """A job title directly under EXPERIENCE belongs to EXPERIENCE."""
+        result = segment.segment(self.SHORT_JOB_TITLE)
+        assert result.has("EXPERIENCE")
+        assert "Backend Intern, Northwind Systems" in result.get("EXPERIENCE")
+        assert "Built 14 REST API endpoints" in result.get("EXPERIENCE")
+
+    def test_a_normal_resume_is_not_told_to_add_sections_it_already_has(self):
+        """The user-visible half of the same bug.
+
+        An empty EXPERIENCE section is a missing one as far as `has()` is
+        concerned, so rule 2 told a student with a clearly titled EXPERIENCE
+        heading to add one. 6.67 of 10 on a resume with nothing wrong with it.
+        """
+        result = segment.segment(self.SHORT_JOB_TITLE)
+        rule = ats.rule_sections(result)
+        assert rule.earned == 10, rule.detail
+        assert rule.fix == ""
+
+    def test_a_custom_heading_after_prose_is_still_detected(self):
+        """The over-correction guard. These rules must not eat real headings."""
+        text = """Kiran Anandan
+
+EXPERIENCE
+Backend Intern, Northwind Systems
+* Built REST APIs serving three thousand requests a day.
+
+HACKATHONS
+Won the 2024 Smart India Hackathon with a team of four.
+"""
+        result = segment.segment(text)
+        assert "OTHER:HACKATHONS" in result.names
+        assert "Smart India" in result.get("OTHER:HACKATHONS")
+
+    def test_a_custom_heading_straight_after_a_list_is_still_detected(self):
+        text = """Kiran Anandan
+
+SKILLS
+Python
+Docker
+
+OPEN SOURCE WORK
+Contributed to Apache Kafka for two years.
+"""
+        result = segment.segment(text)
+        assert "OTHER:OPEN SOURCE WORK" in result.names
+        assert "Apache Kafka" in result.get("OTHER:OPEN SOURCE WORK")
+
+    def test_display_names_strip_the_internal_marker(self):
+        """`OTHER:` is a marker for the code, not a section name for a person."""
+        text = """Kiran Anandan
+
+EXPERIENCE
+Backend Intern, Northwind Systems
+* Built REST APIs serving three thousand requests a day.
+
+HACKATHONS
+Won the 2024 Smart India Hackathon with a team of four.
+"""
+        result = segment.segment(text)
+        assert "OTHER:HACKATHONS" in result.names
+        assert "HACKATHONS" in result.display_names
+        assert not any(n.startswith("OTHER:") for n in result.display_names)
 
 
 # ---------------------------------------------------------------------------

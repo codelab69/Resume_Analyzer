@@ -37,8 +37,8 @@ student it belongs to.
 | **Recommendations** | Ranked openings from the built-in corpus, each with a plain-language reason |
 
 The seed data ships with the project: **169 skills** across 10 categories,
-**26 job postings** across 13 categories, **133 section-heading variants**, and
-**235 action verbs**.
+**26 job postings** across 13 categories, **124 section-heading variants** across
+13 canonical sections, and **235 action verbs**.
 
 ---
 

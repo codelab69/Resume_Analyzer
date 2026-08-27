@@ -61,13 +61,13 @@ Everything ticked above was green at the same moment, on 2026-08-27:
 
 | Check | Result |
 |---|---|
-| `pytest` | **200 passed** in ~2.1 s (120 at the start of this session) |
+| `pytest` | **211 passed** in ~2.1 s (120 at the start of this session) |
 | `scripts/smoke_test.py` | passed |
 | `scripts/e2e_check.py` against live uvicorn | **all 30 checks passed, on the transformer backend** |
 | `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, notes empty |
 | `npm run build` | clean, no warnings, largest chunk 368 kB |
 | All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 30/30 |
-| Vault link integrity | 221 links checked: 135 resolve, 86 point at notes still on this board, **0 broken**. One genuinely broken anchor was found and fixed — `[[Data Model#3. Deletion actually deletes]]` had been written without the section number, which Obsidian does not match |
+| Vault link integrity | 237 links checked: 153 resolve, 84 point at notes still on this board, **0 broken**. One genuinely broken anchor was found and fixed — `[[Data Model#3. Deletion actually deletes]]` had been written without the section number, which Obsidian does not match |
 
 > [!important] The headline change on 2026-08-27
 > The semantic path is live. `/api/health` reports `ok` rather than `degraded` for the
@@ -77,8 +77,8 @@ Everything ticked above was green at the same moment, on 2026-08-27:
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Five defects have been found by verifying rather than by looking
-> S1.2a, S2.3a, S2.5a, S3.4a and S4.2a were all found by *running* the thing being
+> [!note] Seven defects have been found by verifying rather than by looking
+> S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a and S4.3b were all found by *running* the thing being
 > documented instead of trusting an existing comment or a remembered number. None of them
 > would have been caught by reading the code. Two were invisible to a green test suite,
 > and one — S4.2a — was invisible *because* the code read like a correct implementation:
@@ -93,6 +93,8 @@ Everything ticked above was green at the same moment, on 2026-08-27:
 > | S2.5a — warmup left 47 ms on the first request | measuring a number instead of quoting a comment | No |
 > | S3.4a — config described storage that never happened | writing down what is *not* stored | Possibly, by someone who checked |
 > | S4.2a — the two-column fix did not exist | generating a PDF that had two columns in it | No — the comment said it was handled |
+> | S4.3a — acronyms and job titles opened sections | running each guard against the line it rejects | No — the docstring listed four traps and there were six |
+> | S4.3b — README stated a count that was never true | re-counting the data files | Only by re-counting; it looked plausible |
 
 ---
 
@@ -133,7 +135,8 @@ and run a user-testing session with real students.
   **AC:** a reader who has only Python and Node installed can go from clone to a
   working browser tab by following it top to bottom, with no step assumed.
   *Evidence 2026-08-27: every count in it was read out of the data files rather
-  than remembered (169 skills, 26 postings, 133 heading variants, 235 verbs), the
+  than remembered (169 skills, 26 postings, 133 heading variants, 235 verbs). Three of
+  those four were right; the heading count was not - see S4.3b. The
   endpoint table was generated from the live OpenAPI schema, and all three
   verification commands it tells the reader to run were executed. Running them is
   what turned up S1.2a below.*
@@ -495,7 +498,59 @@ file that owns the behaviour, and every wikilink in it resolves or is itself on 
   > important line. Every one of those was describing an intention. The defect only became
   > visible on the first PDF that had two columns in it, which is the third time on this
   > board that running the thing has beaten reviewing it.
-- [ ] **S4.3 — [[Section Segmentation]]** — finding headings with no model, and the four false-positive traps
+- [x] **S4.3 — [[Section Segmentation]]** — finding headings with no model, and the false-positive traps
+  *Evidence 2026-08-27: it is six traps, not four. Every claim in the note was checked
+  against the code, and every guard was run against the line it exists to reject — the
+  table in the note is printed output, not recollection. That is what turned up the two
+  new traps, S4.3a below, and the wrong count in S4.3b. Includes four rejected
+  alternatives, two of them rejected on measurements: blank lines (unavailable, because
+  PDF extraction joins blocks with a single newline) and the symmetric two-word rule
+  (would reject legitimate one-word headings and still miss `REST API`).*
+
+- [x] **S4.3a — Defect: two more heading-shaped things opened sections** *(unplanned)*
+  Found by running each guard against the line it is supposed to reject, instead of
+  trusting the list of four traps already written in the module docstring.
+  **Cause.** `_looks_like_heading` requires two words for Title Case, with a comment
+  explaining that one Title Case word "is far more often a list item than a heading" — and
+  exempts ALL CAPS "at any length". ALL CAPS is how acronyms are written. Two very common
+  things then read as headings:
+  *A skills list written one entry per line.* `SQL`, `HTML`, `CSS`, `AWS`, `REST API` each
+  opened a section. **7 sections instead of 2**; `SKILLS` kept only `Python`. The section
+  a student cares most about, shredded, on a formatting choice that is recommended.
+  *A job title.* `Backend Intern, Northwind Systems` — four Title Case words, and a comma
+  is not sentence punctuation — took the bullets under it and left **EXPERIENCE empty**.
+  `has()` treats an empty section as absent, so ATS rule 2 scored **6.67/10** and told the
+  student *"Add a clearly titled section for Experience"* on a resume with `EXPERIENCE` in
+  capitals three lines up. Unactionable advice reads as a broken tool.
+  **Fix:** `_is_content_not_heading()` — a heading introduces something, and is not the
+  first thing another heading introduces. Three signals: directly under a heading, would
+  open an empty section, or continues a run already read as list entries. The third is
+  what catches the last entry of a list, which the second cannot see.
+  Also: `OTHER:` is an internal marker and was reaching the API response and the ATS detail
+  line as a section name. `display_names` strips it; `names` keeps it for debugging.
+  **AC:** a skills list stays in one section, a short job title leaves EXPERIENCE
+  non-empty, and a genuine custom heading is still detected.
+  *Evidence 2026-08-27: sections on the acronym resume **7 → 2**, `SKILLS` `Python` → all
+  seven entries; ATS rule 2 on the job-title resume **6.67 → 10/10** with the fix text now
+  empty. Both over-correction guards tested — a custom heading after prose and one straight
+  after a list are still detected. `pytest` **211 passed** (200 before). All four decisions
+  mutation-tested, each failing exactly the right tests by name. Sample resume unchanged at
+  ATS 95, `e2e_check.py` all 30 pass, API `sections` no longer leaks `OTHER:`.*
+
+- [x] **S4.3b — Defect: the README stated a count that was never true** *(unplanned)*
+  **Cause:** the README claimed **133 section-heading variants**; `headings.json` yields
+  **124** distinct keys (137 raw entries, 13 of which collapse because each canonical name
+  normalises onto a variant already listed under it). The other three counts in the same
+  sentence — 169 skills, 26 postings, 235 verbs — were all correct, which is why it
+  survived: a wrong number surrounded by right ones does not look wrong.
+  This board's S1.2 evidence line asserts every count was "read out of the data files
+  rather than remembered". Three of four were.
+  **Fix:** corrected to 124 in the README and in [[Algorithms Overview]] — and, because a
+  convention that depends on remembering to check is not a control, `TestDocumentedCounts`
+  now parses the README and asserts each stated count against the data file it describes.
+  **AC:** the four counts in the README match the data, and a test fails if they diverge.
+  *Evidence 2026-08-27: four new tests, green. Mutation-tested by restoring `133` — one
+  test fails, by name.*
 - [ ] **S4.4 — [[Entity Extraction]]** — contact details, and interval merging for experience duration
 - [ ] **S4.5 — [[Skill Matching]]** — longest-match-wins n-gram indexing and the ambiguity problem
 - [ ] **S4.6 — [[Role Classification]]** — the supervised model and the profile fallback

@@ -194,7 +194,7 @@ def rule_sections(segmented: SegmentedResume, **_) -> RuleResult:
     return RuleResult(
         id="sections", title="Standard sections are present", points=10,
         earned=round(earned, 2), status=_grade(earned, 10),
-        detail=f"Detected sections: {', '.join(segmented.names) or 'none'}.",
+        detail=f"Detected sections: {', '.join(segmented.display_names) or 'none'}.",
         fix=fix,
     )
 

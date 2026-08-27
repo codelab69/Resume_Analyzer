@@ -179,6 +179,50 @@ the extractor is behaving oddly.
 
 ---
 
+## D7 — A heading-shaped line is only a heading if it introduces something
+
+**Decision.** `segment._is_content_not_heading()` rejects a structurally-detected heading
+when it sits directly under another heading, when the next line is also a heading, or when
+the previous line was already read as a list entry.
+
+**Alternative.** Require two or more words for ALL CAPS as well as Title Case — the
+symmetric version of the guard that already exists.
+
+**Evidence, 2026-08-27.** The symmetric fix would reject `HACKATHONS`, `WORKSHOPS`,
+`INTERNSHIPS` and `PATENTS`, which are common and legitimate one-word custom headings, and
+it would still accept `REST API`. The three-signal test rejects acronyms *in a list* while
+keeping one-word headings that actually introduce content.
+
+Measured on a skills section written one entry per line — the recommended format:
+**7 sections before, 2 after**; `SKILLS` held only `Python` before and all seven entries
+after. And on a resume with a short job title under `EXPERIENCE`: ATS rule 2 went from
+**6.67/10 to 10/10**, and stopped telling the student to "add a clearly titled section for
+Experience" on a resume that had one three lines up.
+
+The trade is stated rather than hidden: two custom headings in a row now read as one. That
+fails the way the surrounding code already fails — content stays in the section above
+rather than disappearing. Losing a boundary costs attribution; the two bugs it replaced
+cost the content itself and 3.33 points. Full working in [[Section Segmentation]].
+
+---
+
+## D8 — Numbers stated in the README are asserted by tests
+
+**Decision.** `TestDocumentedCounts` parses `README.md` and compares each stated data
+count against the file it describes.
+
+**Alternative.** Keep reading the counts out of the data by hand when the docs are
+written, which is what the working agreement already says.
+
+**Evidence, 2026-08-27.** The agreement was followed for three of the four counts and not
+the fourth: the README claimed **133 section-heading variants** against an actual **124**.
+169 skills, 26 postings and 235 verbs were all correct, which is why nobody looked again —
+a wrong number surrounded by right ones is invisible.
+
+A convention that depends on remembering to check is not a control. Four tests are.
+
+---
+
 ## Still to record
 
 This note was started when S2.4 needed somewhere to put its numbers, so it currently

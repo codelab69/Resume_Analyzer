@@ -8,9 +8,23 @@ Heuristic heading detection, no model. A line is treated as a heading when:
   2. it looks structurally like a heading - short, no sentence punctuation,
      and either ALL CAPS or Title Case.
 
-Rule 1 is precise and does the real work. Rule 2 catches custom headings
-("Hackathons", "Open Source Work") so their content does not silently get
-absorbed into whatever section came before.
+Rule 1 is precise and does the real work: 124 variants across 13 canonical
+sections. Rule 2 catches custom headings ("Hackathons", "Open Source Work") so
+their content does not silently get absorbed into whatever section came before.
+
+Rule 2 is the dangerous one, and most of the code below is about keeping it
+honest. "Short, capitalised, no sentence punctuation" describes a heading; it
+also describes a person's name, a CGPA line, a date range, an acronym in a
+skills list, and a job title. Each of those is a real bug that was found in
+this project, and each has a named guard:
+
+  * a person's name         -> structural detection is off above the first
+                               lexicon heading (see `segment`)
+  * "CGPA: 8.7/10"          -> _LABEL_VALUE
+  * "2022 - 2026"           -> the digit-ratio test in `_looks_like_heading`
+  * "Python" on its own     -> Title Case needs two words
+  * "SQL", "AWS", "REST API"-> `_is_content_not_heading`
+  * "Backend Intern, X"     -> `_is_content_not_heading`
 
 WHY NOT A CLASSIFIER
 --------------------
@@ -91,12 +105,31 @@ class SegmentedResume:
 
     @property
     def names(self) -> list[str]:
-        """Canonical names present, in document order, without duplicates."""
+        """Every section name present, in document order, without duplicates.
+
+        Includes the internal `OTHER:<heading>` markers. This is the debugging
+        view - use `display_names` for anything a user reads.
+        """
         seen: list[str] = []
         for section in self.sections:
             if section.name not in seen:
                 seen.append(section.name)
         return seen
+
+    @property
+    def display_names(self) -> list[str]:
+        """Section names as a person should see them.
+
+        `OTHER:` is an internal marker meaning "heading-shaped, but not one of
+        the thirteen canonical sections". Showing that prefix in a report -
+        `OTHER:Hackathons` - reads as a bug to the student, so it is stripped
+        here. The distinction still matters inside the code, which is why
+        `names` keeps it.
+        """
+        return [
+            name.split(":", 1)[1] if name.startswith("OTHER:") else name
+            for name in self.names
+        ]
 
 
 @lru_cache(maxsize=1)
@@ -185,6 +218,97 @@ def _classify(line: str, allow_structural: bool = True) -> str | None:
     return None
 
 
+def _is_content_not_heading(
+    all_lines: list[str],
+    index: int,
+    allow_structural: bool,
+    previous_was_list_item: bool,
+    previous_was_heading: bool,
+) -> bool:
+    """Is this heading-shaped line really content - a list entry, or a job title?
+
+    THE PROBLEM THIS SOLVES
+    -----------------------
+    A skills section written one entry per line is extremely common, and many
+    skills are acronyms:
+
+        SKILLS
+        Python
+        SQL
+        HTML
+        CSS
+        AWS
+        REST API
+        Docker
+
+    Every one of `SQL`, `HTML`, `CSS`, `AWS` and `REST API` is ALL CAPS, short,
+    and free of punctuation - structurally indistinguishable from a heading.
+    Without this check they each open a section, `SKILLS` keeps only `Python`,
+    and the section the student cares most about is shredded into five empty
+    ones.
+
+    `_looks_like_heading` already guards the mirror image of this for Title
+    Case, and says so in its own comment: a single Title Case word "is far more
+    often a list item than a heading". The same argument applies to ALL CAPS and
+    applies harder, because ALL CAPS is how acronyms are written. That guard was
+    never extended, which is what left the hole.
+
+    THE SECOND PROBLEM
+    ------------------
+    The same hole swallows the first line of a section:
+
+        EXPERIENCE
+        Backend Intern, Northwind Systems
+        Jun 2025 - Aug 2025
+        * Built 14 REST API endpoints serving 3000 daily requests
+
+    `Backend Intern, Northwind Systems` is four Title Case words with no
+    sentence punctuation, so it reads as a heading, takes the bullets with it,
+    and leaves `EXPERIENCE` **empty**. `SegmentedResume.has()` is false for an
+    empty section, so ATS rule 2 then reports EXPERIENCE as missing and tells
+    the student to "add a clearly titled section for Experience" on a resume
+    that has one, in capitals, three lines up. Measured: 6.67 of 10 instead of
+    10 on a resume with nothing wrong with it.
+
+    THE TEST
+    --------
+    A heading introduces something, and it is not the first thing another
+    heading introduces. Three local signals say this line is content:
+
+    1. **It sits directly under a heading** - so it is that section's first
+       line. Sections start with their content, not with a sub-heading.
+    2. **It would open an empty section** - the next line is itself a heading,
+       so there is nothing between them. Real headings have bodies.
+    3. **It continues a run** - the line before it was already read as a list
+       entry. One acronym in a list of acronyms is not a heading just because
+       the line under it happens to be lowercase.
+
+    Signal 3 is what catches the last entry of a run. `REST API` above is
+    followed by `Docker`, which is not heading-shaped, so signal 2 alone would
+    let it through and split the section anyway.
+
+    WHAT THIS DELIBERATELY GIVES UP
+    -------------------------------
+    Two headings in a row. `EXPERIENCE` immediately followed by a custom
+    `OPEN SOURCE` heading now reads the second as content of the first. That is
+    the same trade `_looks_like_heading` already makes for one-word Title Case
+    lines, and it fails the same safe way: the content stays in the section
+    above rather than disappearing. Losing a boundary costs attribution; the two
+    bugs this replaces cost the content itself and 3.33 ATS points.
+    """
+    if previous_was_heading:
+        return True
+
+    if previous_was_list_item:
+        return True
+
+    if index + 1 >= len(all_lines):
+        # Last line of the document, with nothing under it to introduce.
+        return True
+
+    return _classify(all_lines[index + 1], allow_structural=allow_structural) is not None
+
+
 def segment(text: str) -> SegmentedResume:
     """Split resume text into sections.
 
@@ -206,10 +330,25 @@ def segment(text: str) -> SegmentedResume:
     # details into a section nothing downstream reads.
     marks: list[tuple[int, str, str]] = []   # (line index, canonical, raw line)
     seen_known_heading = False
+    dropped_previous = False   # the line before this one was a list item
+    previous_was_heading = False
     for index, line in enumerate(all_lines):
         name = _classify(line, allow_structural=seen_known_heading)
         if not name:
+            dropped_previous = False
+            previous_was_heading = False
             continue
+
+        if name.startswith("OTHER:") and _is_content_not_heading(
+            all_lines, index, seen_known_heading,
+            dropped_previous, previous_was_heading,
+        ):
+            dropped_previous = True
+            previous_was_heading = False
+            continue
+
+        dropped_previous = False
+        previous_was_heading = True
         if not name.startswith("OTHER:"):
             seen_known_heading = True
         marks.append((index, name, line))

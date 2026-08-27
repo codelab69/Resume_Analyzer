@@ -212,7 +212,7 @@ class ResumeReport(BaseModel):
             skill_names=analysis.skill_names,
             role=RoleOut.from_prediction(analysis.role),
             ats=AtsOut.from_report(analysis.ats_report),
-            sections=analysis.segmented.names,
+            sections=analysis.segmented.display_names,
             warnings=analysis.warnings,
             timings_ms=analysis.timings,
         )
