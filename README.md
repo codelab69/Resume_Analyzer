@@ -317,3 +317,9 @@ reads at startup.
 Resumes uploaded during testing are personal data. `backend/storage/` is git-ignored for
 that reason, and the delete endpoint removes a report and everything attached to it.
 Consent handling for sessions with real students is covered in the Customer Testing Plan.
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).
