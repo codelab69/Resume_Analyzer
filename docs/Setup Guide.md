@@ -177,7 +177,7 @@ What a healthy machine reports:
 | Check | Expect |
 |---|---|
 | `smoke_test.py` | a full report, per-stage timings, ending `Smoke test passed.` |
-| `pytest -q` | `181 passed` |
+| `pytest -q` | `184 passed` |
 | `e2e_check.py` | `All end-to-end checks passed.` (30 checks) |
 
 Then the frontend check: open the app, upload
@@ -217,7 +217,8 @@ any of them.
 |---|---|---|
 | **REQUIRED** | fastapi, uvicorn, pydantic, pydantic-settings, python-multipart | The API will not start |
 | **PARSERS** | PyMuPDF, pdfplumber, python-docx | Uploads fail — install at least one |
-| **ML EXTRAS** | numpy, scikit-learn, rapidfuzz, sentence-transformers, spacy, joblib | Everything still works, on simpler fallbacks |
+| **ML EXTRAS** | numpy, scikit-learn, rapidfuzz, sentence-transformers, torch, transformers, joblib | Everything still works, on simpler fallbacks |
+| **OPT-IN** | spaCy, commented out — two commands or neither | Name detection uses the heuristic. See below |
 
 Every ML extra has a deterministic fallback behind it:
 
@@ -227,10 +228,28 @@ Every ML extra has a deterministic fallback behind it:
 | Role classification | Trained classifier | Rule-based role profiles |
 | PDF reading | PyMuPDF (layout-aware) | pdfplumber, then plain text |
 | Typo recovery in skills | rapidfuzz | Skipped |
-| Name detection | spaCy NER | Positional heuristic |
+| Name detection | spaCy NER *(opt-in)* | Positional heuristic |
 
 To install only the first two tiers, comment out the ML EXTRAS block in
 `requirements.txt` before running `pip install -r requirements.txt`.
+
+> [!note] Why spaCy is not in the file any more
+> It used to be pinned as `spacy==3.8.3`, and that pin promised something
+> `pip install -r requirements.txt` could never deliver. spaCy does one job here —
+> confirming the header line of a resume is a `PERSON` — and it cannot do it without the
+> `en_core_web_sm` model, which arrives from a separate command that pip cannot express.
+> Installing the package alone got you 500 MB, a silent fallback to the heuristic, and
+> one INFO line in the log explaining why.
+>
+> Two commands, run together, or neither:
+>
+> ```bash
+> pip install spacy==3.8.3
+> python -m spacy download en_core_web_sm
+> ```
+>
+> Everything in this guide, and all 184 tests, pass without it. See
+> [[Decision Log#D3 — spaCy is opt-in, not a pinned dependency]].
 
 > [!note] Why `numpy` is pinned below 2.1
 > The scikit-learn and torch wheels on Windows lag behind the newest numpy ABI.
@@ -239,30 +258,35 @@ To install only the first two tiers, comment out the ML EXTRAS block in
 
 ### Two things to expect during `pip install`
 
-**It will pause and look stuck.** You will see:
-
-```
-INFO: pip is looking at multiple versions of thinc to determine which version
-is compatible with other requirements. This could take a while.
-```
-
-That is pip backtracking through spaCy's dependency tree. It is normal, it can take
-several minutes, and it is not frozen. Let it finish.
-
 **It downloads a lot.** `torch` is 524 MB on its own. On a slow connection, start this
 before you need it.
 
-> [!info] Verified 2026-08-27
-> `pip install --dry-run -r requirements.txt` resolves to a complete, consistent set on
-> Python 3.12 — 38 packages including spaCy 3.8.3 and its whole native chain. The pins
-> in the file are known to be installable, not merely hopeful.
+**Put the virtualenv somewhere short, on Windows.** `D:\project\backend\.venv` is fine;
+a virtualenv buried eight directories deep is not. torch ships a licence tree eleven
+directories deep, and once the virtualenv path is added on top of it the total passes
+Windows' 260-character limit and the install dies with
+`OSError: [WinError 206] The filename or extension is too long` — after every package has
+already resolved and downloaded, which makes it look like anything other than what it is.
+Section 8 has the fix.
+
+> [!info] Verified 2026-08-27 — by installing, not by dry-running
+> A brand-new virtualenv was created, filled with `pip install -r requirements.txt` and
+> **nothing else**, and then used to run every check in this guide:
 >
-> One honest caveat: the environment these 181 tests were actually run in has drifted
-> *ahead* of those pins (FastAPI 0.141 against a pinned 0.115, for instance) because it
-> was assembled by hand during development. A fresh machine gets the pinned versions,
-> which resolve but have not themselves been run against the suite. If you are setting up
-> a second machine, treat `pytest -q` on it as a real check, not a formality — see
-> S1.5 on the [[Sprint Board]].
+> | Check | Result |
+> |---|---|
+> | `pip install -r requirements.txt` | exit 0, no conflicts |
+> | Installed versions vs pinned versions | 16 of 16 exact, 0 mismatches |
+> | `pytest -q` | **184 passed** |
+> | `scripts/smoke_test.py` | passed |
+> | `scripts/e2e_check.py`, server run from that same venv | **all 30 passed** |
+> | `GET /api/health` | `ok`, `semantic_backend: transformer` |
+>
+> This replaces an earlier caveat on this page, which said the pinned set resolved but
+> had never been run, and that the hand-assembled development environment had drifted
+> ahead of it. That was true, and it is now fixed: the pins **are** the versions that
+> were tested. If you upgrade one, run all three checks again and move the pin — see
+> [[Decision Log#D4 — The pins are the set that was tested, not the set that was chosen]].
 
 ---
 
@@ -301,7 +325,7 @@ Copy this and tick as you go.
 **Proof it works:**
 
 - [ ] `python scripts/smoke_test.py` → `Smoke test passed.`
-- [ ] `pytest -q` → `181 passed`
+- [ ] `pytest -q` → `184 passed`
 - [ ] `uvicorn app.main:app --port 8000` starts, `/docs` opens in a browser
 - [ ] `python scripts/e2e_check.py` → `All end-to-end checks passed.`
 - [ ] `npm run dev` starts, <http://localhost:5173> opens
@@ -329,6 +353,7 @@ automatically. The list matters when copying a folder on a USB stick.
 | `/api/health` says `hashing` after installing everything | Same as above | Same as above |
 | `Activate.ps1 cannot be loaded` | PowerShell execution policy | `Set-ExecutionPolicy -Scope Process RemoteSigned`, or use Git Bash |
 | `pip install` fails building a wheel | numpy pin conflict | Do not unpin numpy. Delete `.venv`, recreate it, install again |
+| `OSError: [WinError 206] The filename or extension is too long`, part-way through installing torch | Windows 260-character path limit. torch ships a licence tree eleven directories deep, and the virtualenv path is added on top of it | Put the virtualenv nearer the drive root (`D:\cv`), or enable long paths: `New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 1 -PropertyType DWORD -Force` as administrator, then reboot. Nothing is wrong with `requirements.txt` — everything resolved and downloaded before this |
 | `npm run dev` fails, esbuild missing | Install script was blocked | `npm approve-scripts esbuild` then `npm install` |
 | Port 8000 or 5173 already in use | Something else is on it | `uvicorn ... --port 8001`, or `npm run dev -- --port 5174` |
 | Frontend loads but every request fails | Backend not running, or on a different port | Check terminal 1; the dev server proxies `/api` to port 8000 |

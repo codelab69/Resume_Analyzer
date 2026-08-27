@@ -9,31 +9,67 @@
 #               deterministic implementations (see app/core/embed.py and
 #               app/core/skills.py). Install them for full accuracy.
 #
-# numpy is pinned below 2.1 because the spaCy / scikit-learn / torch wheels
-# on Windows still lag behind the newest numpy ABI. Unpinning this is the most
-# common cause of a broken environment mid-project.
+# EVERY VERSION BELOW WAS MEASURED, NOT CHOSEN
+# --------------------------------------------
+# These pins are the exact set that passed `pytest` (184 tests),
+# `scripts/smoke_test.py` and `scripts/e2e_check.py` (30 checks) on the
+# transformer backend on 2026-08-27. They are not aspirational: an earlier
+# version of this file pinned a set nobody had ever run, and the working
+# virtualenv had drifted a full major version ahead of it on four packages.
+# If you upgrade something here, run all three checks again and move the pin.
 # ---------------------------------------------------------------------------
 
 # --- REQUIRED --------------------------------------------------------------
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.10.4
-pydantic-settings==2.7.0
-python-multipart==0.0.20
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pydantic==2.13.4
+pydantic-settings==2.15.0
+python-multipart==0.0.32
 
 # --- PARSERS ---------------------------------------------------------------
-PyMuPDF==1.25.1          # primary PDF reader, gives block geometry
-pdfplumber==0.11.4       # fallback PDF reader for table-heavy layouts
-python-docx==1.1.2       # .docx support
+PyMuPDF==1.28.2          # primary PDF reader, gives block geometry
+pdfplumber==0.11.10      # fallback PDF reader for table-heavy layouts
+python-docx==1.2.0       # .docx support
 
 # --- ML EXTRAS (optional, see note above) ----------------------------------
+# numpy is capped below 2.1 because the scikit-learn and torch wheels on
+# Windows still lag the newest numpy ABI. Unpinning this is the most common
+# cause of a broken environment mid-project. Tested at 2.0.2.
 numpy<2.1
-scikit-learn==1.6.0
-rapidfuzz==3.11.0
-sentence-transformers==3.3.1
-spacy==3.8.3
-joblib==1.4.2
+scikit-learn==1.9.0
+rapidfuzz==3.14.5
+sentence-transformers==6.0.0
+joblib==1.5.3
+
+# torch and transformers arrive as transitive dependencies of
+# sentence-transformers, and are pinned here anyway on purpose. They are the
+# two packages that decide whether the semantic path works at all, and both
+# move fast enough that an unpinned resolve a month from now can produce a
+# combination that loads the model differently or not at all. Pinning the
+# direct dependency alone does not protect the thing that actually breaks.
+torch==2.13.0
+transformers==5.16.0
+
+# --- OPT-IN: spaCy name detection ------------------------------------------
+# Deliberately not installed by default, and deliberately not a plain pin.
+#
+# spaCy is used for exactly one thing: confirming that the header line of a
+# resume is a PERSON, in app/core/entities.py::_spacy_person. The heuristic
+# behind it produces the same answer on every resume in tests/fixtures, so
+# this is an accuracy improvement on hard inputs, not a requirement.
+#
+# It sat in this file as `spacy==3.8.3` for most of the project, which promised
+# something `pip install -r requirements.txt` could never deliver: the package
+# alone does nothing without a model, and the model comes from a separate
+# command that pip cannot express. Anyone who installed it got a silent
+# fallback and no indication why. Two lines, run together, or neither:
+#
+#     pip install spacy==3.8.3
+#     python -m spacy download en_core_web_sm
+#
+# It adds ~500 MB. The app logs one INFO line when the model is absent and
+# carries on with the heuristic.
 
 # --- DEV / TEST ------------------------------------------------------------
-pytest==8.3.4
+pytest==9.1.1
 httpx==0.28.1

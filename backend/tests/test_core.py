@@ -9,6 +9,8 @@ skills, embeddings.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from app.core import (
@@ -314,6 +316,68 @@ class TestEmbed:
 
     def test_chunking_never_returns_empty_for_real_text(self):
         assert embed.chunk("Short text") != []
+
+
+class TestModelLoadingIsCacheFirst:
+    """Booting must not depend on huggingface.co being reachable.
+
+    The default `SentenceTransformer(name)` revalidates every config file over
+    the network on each start, even when the whole model is already cached.
+    Measured here: 33 requests and 14 s, against 0 requests and 7 s when the
+    cache is trusted. Offline, or behind a captive portal, those requests wait
+    for their timeouts and the boot time becomes a property of the venue.
+
+    These tests use a stand-in for sentence-transformers so they run on any
+    machine, with or without the real package, and never touch the network.
+    """
+
+    @staticmethod
+    def _fake(fails_when_local_only: bool = False, fails_always: bool = False):
+        """A stand-in sentence-transformers module that records how it was called."""
+        calls: list[dict] = []
+
+        def SentenceTransformer(name, **kwargs):
+            calls.append(kwargs)
+            if fails_always:
+                raise OSError("no cache and no network")
+            if fails_when_local_only and kwargs.get("local_files_only"):
+                raise OSError("model is not in the cache")
+            return f"model:{name}"
+
+        return SimpleNamespace(SentenceTransformer=SentenceTransformer), calls
+
+    def test_reads_the_cache_without_touching_the_network(self):
+        fake, calls = self._fake()
+        assert embed._load_model(fake, "some-model") == "model:some-model"
+        # One call, and it opted out of the network. A second call here would
+        # be the regression: the download path running even though the cache
+        # answered.
+        assert len(calls) == 1
+        assert calls[0].get("local_files_only") is True
+
+    def test_downloads_once_when_the_cache_cannot_answer(self):
+        fake, calls = self._fake(fails_when_local_only=True)
+        assert embed._load_model(fake, "some-model") == "model:some-model"
+        assert len(calls) == 2
+        assert calls[0].get("local_files_only") is True
+        # The retry must not carry the flag, or a first run on a clean machine
+        # could never populate the cache.
+        assert calls[1].get("local_files_only") is not True
+
+    def test_a_genuine_failure_still_reaches_the_fallback(self, monkeypatch):
+        """Both paths failing must degrade to hashing, not crash the analysis."""
+        fake, calls = self._fake(fails_always=True)
+        monkeypatch.setattr(embed.optional, "load", lambda name: fake)
+        embed._backend = None
+        embed._model = None
+        try:
+            from app.config import settings
+            monkeypatch.setattr(settings, "use_transformer_embeddings", True)
+            assert embed.backend() == "hashing"
+            assert len(calls) == 2          # cache attempt, then download attempt
+        finally:
+            embed._backend = None
+            embed._model = None
 
 
 # ---------------------------------------------------------------------------

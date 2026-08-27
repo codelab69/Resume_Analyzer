@@ -29,7 +29,7 @@ fails if any file appears beside the database.
 | The uploaded file | See above. Nothing needs the bytes after extraction |
 | Accounts, emails, sessions | The tool is anonymous. There is no user to attach a resume to, so there is nothing to accumulate |
 | IP addresses or analytics | Nothing about who uploaded what |
-| Anything at all after `DELETE` | The cascade is real — see [[#Deletion actually deletes]] |
+| Anything at all after `DELETE` | The cascade is real — see [[#3. Deletion actually deletes]] |
 
 > [!note] A setting that described storage which never happened
 > `UPLOAD_DIR` used to exist. It was documented in `.env.example` and the README as

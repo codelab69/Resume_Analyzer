@@ -45,8 +45,8 @@ same bar every time.
 | Sprint | Goal | Status |
 |---|---|---|
 | [[#Sprint 0 — Foundation]] | Working end-to-end skeleton | Complete |
-| [[#Sprint 1 — Ship the paperwork]] | Repo is handable to another developer | Complete — one item left for you (S1.4) |
-| [[#Sprint 2 — Turn the accuracy up]] | Transformer path proven, not assumed | **Blocked** — needs admin, see below |
+| [[#Sprint 1 — Ship the paperwork]] | Repo is handable to another developer | Complete |
+| [[#Sprint 2 — Turn the accuracy up]] | Transformer path proven, not assumed | **Complete** — unblocked and measured 2026-08-27 |
 | [[#Sprint 3 — Architecture notes]] | The "how it fits together" half of the vault | Complete |
 | [[#Sprint 4 — Algorithm notes]] | Every algorithm written up for the viva | In progress |
 | [[#Sprint 5 — Guides and reference]] | A stranger can set it up unaided | In progress |
@@ -61,11 +61,21 @@ Everything ticked above was green at the same moment, on 2026-08-27:
 
 | Check | Result |
 |---|---|
-| `pytest` | **181 passed** in ~2.1 s (120 at the start of this session) |
+| `pytest` | **184 passed** in ~2.0 s (120 at the start of this session) |
 | `scripts/smoke_test.py` | passed |
-| `scripts/e2e_check.py` against live uvicorn | **all 30 checks passed** |
+| `scripts/e2e_check.py` against live uvicorn | **all 30 checks passed, on the transformer backend** |
+| `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, notes empty |
 | `npm run build` | clean, no warnings, largest chunk 368 kB |
-| Vault link integrity | 68 links resolve, **0 broken anchors**; every unresolved link is a note still on this board |
+| All three checks from a **clean venv built only from `requirements.txt`** | pytest 184, smoke passed, e2e 30/30 |
+| Vault link integrity | 198 links checked: 118 resolve, 80 point at notes still on this board, **0 broken**. One genuinely broken anchor was found and fixed — `[[Data Model#3. Deletion actually deletes]]` had been written without the section number, which Obsidian does not match |
+
+> [!important] The headline change on 2026-08-27
+> The semantic path is live. `/api/health` reports `ok` rather than `degraded` for the
+> first time, the frontend banner is gone, and the semantic sub-score **doubled** against
+> the hashing fallback (0.19 → 0.39 on a matching JD). The full A/B table is in
+> [[Decision Log#D1 — The semantic backend is measured against its fallback, not assumed better]].
+> Getting there turned up one defect, S2.3a, which was invisible on a machine with
+> working wi-fi.
 
 > [!note] Three defects were found by verifying rather than by looking
 > S1.2a, S2.5a and S3.4a were all found by *running* the thing being documented instead
@@ -152,29 +162,60 @@ and run a user-testing session with real students.
   remains stageable is **78 files** — source, docs, data, tests and config, and nothing
   else. No uploaded resume, no database, no virtualenv, no `node_modules`.*
 
-- [ ] **S1.5 — Reconcile `requirements.txt` with the environment the tests ran in**
-  The pins resolve cleanly (`pip install --dry-run` verified 2026-08-27, 38 packages),
-  but the working `.venv` has drifted ahead of them — it was assembled by hand during
-  development, so FastAPI 0.141 is installed against a pinned 0.115, and spaCy is pinned
-  but absent. Nobody has run the suite against the pinned set.
+- [x] **S1.5 — Reconcile `requirements.txt` with the environment the tests ran in**
+  The pins resolved cleanly (`pip install --dry-run` verified 2026-08-27, 38 packages),
+  but the working `.venv` had drifted ahead of them — it was assembled by hand during
+  development, so FastAPI 0.141 was installed against a pinned 0.115, and spaCy was
+  pinned but absent. Nobody had run the suite against the pinned set.
   **AC:** a virtualenv built **only** from `requirements.txt` on a clean machine passes
   `pytest -q`, `smoke_test.py` and `e2e_check.py`. Then either the pins move up to what
   was tested, or they stay and this is the evidence they work.
-  *Why it is not urgent: the pins resolve, so a new machine will install. Why it is not
-  ignorable: "it works on my machine" is exactly the shape of this gap.*
+  *Evidence 2026-08-27: the pins moved up. A brand-new virtualenv was created, filled
+  with `pip install -r requirements.txt` and **nothing else**, and used to run all three
+  checks and to serve the API for the end-to-end run:*
 
-- [ ] **S1.4 — First commit** *(left for you deliberately — see note)*
-  `git init` has been run and the ignore rules verified against it, but no commit has
-  been made. Authorship on the first commit of a project is not something to set on
-  someone's behalf.
+  | Check, run from the clean virtualenv | Result |
+  |---|---|
+  | `pip install -r requirements.txt` | exit 0, no conflicts |
+  | Installed versions vs pinned versions | **16 of 16 exact, 0 mismatches** |
+  | `pytest -q` | **184 passed** |
+  | `scripts/smoke_test.py` | passed |
+  | `scripts/e2e_check.py`, against a server from this same venv | **all 30 passed** |
+  | `GET /api/health` | `ok`, `semantic_backend: transformer` |
+
+  *Four packages had drifted a major or minor version — FastAPI 0.115 → 0.141,
+  sentence-transformers 3.3 → 6.0, scikit-learn 1.6 → 1.9, pytest 8.3 → 9.1 — and
+  `torch` and `transformers` are now pinned too, despite being transitive. They are the
+  two packages that decide whether the semantic path works at all, and pinning
+  `sentence-transformers` alone leaves them free to resolve into a combination that loads
+  the model differently or not at all. spaCy was moved out of the installed set to a
+  commented opt-in block; see
+  [[Decision Log#D3 — spaCy is opt-in, not a pinned dependency]] and
+  [[Decision Log#D4 — The pins are the set that was tested, not the set that was chosen]].*
+
+  > [!warning] The clean install failed the first time, and not for a dependency reason
+  > `pip install -r requirements.txt` died with
+  > `OSError: [WinError 206] The filename or extension is too long`, part-way through
+  > unpacking torch. Every package had resolved and downloaded correctly. torch ships a
+  > licence tree nested eleven directories deep — `torch/…/kineto/libkineto/third_party/
+  > dynolog/third_party/DCGM/testing/python3/libs_3rdparty` — and on Windows without long
+  > path support that exceeds the 260-character limit *once the virtualenv is more than a
+  > few directories from the drive root*.
+  >
+  > The same requirements file installed cleanly into `D:\cv`. This is worth knowing
+  > before demo day: it is not a broken requirements file, it looks nothing like a path
+  > problem in the error, and the fix is to put the virtualenv somewhere short or enable
+  > long paths. Added to [[Setup Guide]].
+
+- [x] **S1.4 — First commit** *(done by you, as it should have been)*
   **AC:** first commit made under your own name and email, working tree clean
   afterwards, and nothing ignored by S1.3 inside it.
-  ```bash
-  git config user.name  "Your Name"
-  git config user.email "you@example.com"
-  git add -A
-  git commit -m "Resume analyzer: backend pipeline, API, frontend, docs"
-  ```
+  *Evidence 2026-08-27: `edc95ac` "Resume analyzer: analysis pipeline, API, frontend and
+  documentation", authored by Kirananandan, 86 files. Pushed to
+  `github.com/codelab69/Resume_Analyzer` on branch `kiran`, local and remote at the same
+  SHA, working tree clean. Checked against S1.3: no `.env`, no `storage/`, no `.venv/`,
+  no `node_modules/`, no `__pycache__/` in the tree — only `backend/.env.example` is
+  tracked. A second commit, `8bec613`, added the MIT `LICENSE`.*
 
 ---
 
@@ -182,51 +223,129 @@ and run a user-testing session with real students.
 
 **Goal:** the semantic path stops being theoretical. `/api/health` reports `ok`.
 
-> [!bug] This sprint is blocked on a machine-level prerequisite
-> Every package is installed correctly. `torch` still cannot load, because the
-> **Microsoft Visual C++ 2015–2022 Redistributable is missing from this machine**.
-> See [[#S2.0 — Install the Visual C++ runtime]] — it is a two-minute fix, but it
-> needs a human with administrator rights, so nothing below it can proceed.
+> [!success] Unblocked and finished on 2026-08-27
+> The Visual C++ redistributable was installed on this machine between sessions, so
+> `torch` loads and everything below it fell through in order. The sprint is complete:
+> `/api/health` reports `ok`, and the accuracy claim is now a measured A/B rather than
+> an assumption. One unplanned defect came out of it — S2.3a.
 
-- [ ] **S2.0 — Install the Visual C++ runtime** *(blocker — needs admin)*
+- [x] **S2.0 — Install the Visual C++ runtime** *(was the blocker — needed admin)*
   `torch` ships native DLLs that link against the MSVC runtime. Without it,
   `import torch` dies with `WinError 126 … c10.dll`, which takes
   `sentence-transformers` down with it.
   **Fix:** download and run <https://aka.ms/vs/17/release/vc_redist.x64.exe>,
   then reopen the terminal.
   **AC:** `%SystemRoot%\System32\msvcp140.dll` and `vcruntime140_1.dll` both exist.
-  *Evidence 2026-08-27: both MISSING, and the `VC\Runtimes` registry key is absent.*
+  *Evidence 2026-08-27: both **PRESENT** in `C:\Windows\System32`, along with
+  `vcruntime140.dll`. `import torch` completes in 2.45 s from `backend/.venv` with no
+  DLL error. The previous check on this same line found both missing; the only change
+  is the runtime.*
 
-- [x] **S2.1 — Confirm the ML extras resolve in the virtualenv** — *partial*
+- [x] **S2.1 — Confirm the ML extras resolve in the virtualenv** — *now complete*
   **AC:** `sentence-transformers`, `torch`, `scikit-learn`, `PyMuPDF`, `pdfplumber`,
   `python-docx`, `rapidfuzz` and `joblib` all import from `backend/.venv`.
-  *Evidence 2026-08-27: all eight are **installed** in `backend/.venv`
-  (sentence-transformers 6.0.0, torch 2.13.0, scikit-learn 1.9.0, pymupdf 1.28.2,
-  pdfplumber 0.11.10, python-docx 1.2.0, rapidfuzz 3.14.5, joblib 1.5.3). Seven of
-  the eight **import**. `torch` does not — blocked by S2.0. Installation is
-  therefore done; importability is not, and is tracked by S2.0.*
+  *Evidence 2026-08-27: **all eight import.** Previously seven of eight, with `torch`
+  failing on the missing runtime. Timed from a cold process: torch 2.45 s,
+  sentence-transformers 6.67 s, the rest under 0.25 s each. Versions are now the ones
+  pinned in `requirements.txt` — see S1.5.*
 
-- [ ] **S2.2 — Model loads and encodes** *(blocked by S2.0)*
+- [x] **S2.2 — Model loads and encodes**
   **AC:** `all-MiniLM-L6-v2` loads, returns 384-dimensional vectors, and scores a
   related sentence pair materially higher than an unrelated one.
+  *Evidence 2026-08-27: model loaded in 8.2 s, `encode()` returned shape `(3, 384)`.
+  Cosine on a deliberately word-disjoint pair — "python developer with django
+  experience" against "senior backend engineer building REST APIs in python" —
+  **0.5169**, against **0.0498** for "pastry chef specialising in laminated dough". A
+  10× separation, and the related pair shares only the word "python", which is the
+  point: the hashing backend can only see that one word.*
 
-- [ ] **S2.3 — `/api/health` flips to `ok`** *(blocked by S2.0)*
+  > [!note] The first attempt failed and the failure was not real
+  > The very first load raised `ValueError: Unrecognized processing class`. That was a
+  > cold cache mid-download, not a version incompatibility — the weights had arrived and
+  > the tokenizer files had not. It succeeded on the next run and every run since.
+  > Recorded because the obvious next move was to start downgrading
+  > `transformers`, which would have "fixed" it by coincidence and left a wrong pin in
+  > `requirements.txt` forever.
+
+- [x] **S2.3 — `/api/health` flips to `ok`**
   **AC:** with the venv active and `USE_TRANSFORMER_EMBEDDINGS=true`, health reports
   `semantic_backend: transformer` and the degraded banner disappears from the frontend.
+  *Evidence 2026-08-27: live `GET /api/health` returns `"status": "ok"`,
+  `"semantic_backend": "transformer"`, `"embeddings": "transformer"` in components, and
+  `"notes": []`. The notes array is what the frontend renders as the degraded banner, so
+  an empty array is the banner being gone rather than a claim that it is.*
 
-- [ ] **S2.4 — Re-run the full check on the transformer path** *(blocked by S2.0)*
+- [x] **S2.3a — Defect: every boot made 33 network calls it did not need** *(unplanned)*
+  Found by reading the startup log while verifying S2.3, rather than stopping at the
+  `ok` in the response body.
+  **Cause:** `SentenceTransformer(name)` revalidates its cache over the network on every
+  start — one HEAD request per config file, 33 of them, even with the model fully
+  downloaded and unchanged. Seven of the fourteen seconds of boot were spent asking
+  huggingface.co whether files it already had were still current.
+  The wasted time is the smaller half. Those requests are a **hidden dependency on the
+  network at start-up**: on an offline laptop, or on conference wi-fi behind a captive
+  portal that swallows connections instead of refusing them, each one waits out its own
+  timeout before falling back to the cache it already had. Boot time becomes a property
+  of the venue. It works on every machine it is tested on and stalls on the one that
+  matters.
+  **Fix:** `embed._load_model()` — try `local_files_only=True` first, fall back to a
+  networked load only when the cache cannot answer, and log which path was taken. The
+  download still happens exactly once, on the first run of a clean machine.
+  **AC:** a normal boot, with the network available and no environment variables set,
+  makes zero requests to huggingface.co and still reports `transformer`.
+  *Evidence 2026-08-27: boot **14 s → 6 s**, huggingface.co requests **33 → 0**, health
+  still `ok | transformer`, all 30 e2e checks still pass. `pytest` 184 passed, including
+  three new `TestModelLoadingIsCacheFirst` tests that use a stand-in for
+  sentence-transformers so they run on any machine and never touch the network.
+  Mutation-tested: removing `local_files_only=True` failed two of the three by name;
+  file restored byte-identical afterwards. Full comparison in
+  [[Decision Log#D2 — The model is loaded from the local cache first, and only downloaded if it must]].*
+
+- [x] **S2.4 — Re-run the full check on the transformer path**
   **AC:** `pytest` green, `e2e_check.py` all pass, and the semantic sub-score for a
   matching JD is measurably higher than it was on the hashing backend. Both numbers
   recorded in [[Decision Log]] so the improvement is evidenced, not claimed.
+  *Evidence 2026-08-27: `pytest` **184 passed**; `e2e_check.py` **all 30 checks passed**
+  against a live server reporting `embeddings=transformer`. The A/B was run properly —
+  two servers, same fixtures, one forced onto each backend — rather than compared against
+  a remembered number. Semantic sub-score on a matching JD **0.19 → 0.39**, match score
+  **39 → 47**, top recommendation **60 → 79**. Recorded in
+  [[Decision Log#D1 — The semantic backend is measured against its fallback, not assumed better]],
+  including the part that does not flatter the change: the unrelated JD also rose
+  (11 → 18), so the separation between a matching and a non-matching posting stayed flat
+  at ~28. The signal is stronger; on this one pair it is not more discriminating, and one
+  pair is not an ablation.*
 
-- [x] **S2.5 — Cold-start cost measured and handled** — *done on the hashing backend*
+- [x] **S2.5 — Cold-start cost measured and handled** — *re-measured on both backends*
   **AC:** first-request latency after boot is measured and written down. If it exceeds
   the target in [[Complete Testing Plan#7. Performance]], warmup covers it.
   *Evidence 2026-08-27: measured, found wanting, and fixed — see S2.5a. Boot ~1.6 s,
   first upload 9.6 ms, steady state 4.0 ms, match 8.8 ms. All recorded in
-  [[Analysis Pipeline#Measured cost]]. Note this covers the **hashing** path; the
-  transformer path adds model load at boot and JD encoding per request, and must be
-  re-measured once S2.0 unblocks.*
+  [[Analysis Pipeline#Measured cost]].*
+
+  **Re-measured on the transformer path, 2026-08-27**, now that S2.0 is unblocked. Same
+  machine, same fixtures, two servers, one forced onto each backend:
+
+  | | hashing | transformer | target |
+  |---|---|---|---|
+  | Cold start to `Ready` | < 1 s | **6 s** | < 30 s |
+  | `POST /api/resume/upload`, first after boot | 24.9 ms | 25.1 ms | < 3 s |
+  | `POST /api/resume/upload`, steady state | 2.4 ms | 2.2 ms | < 300 ms |
+  | `POST /api/match`, steady state | 14.4 ms | **115.6 ms** | < 1.5 s |
+
+  Everything is inside its target, so nothing needed fixing — but two of these numbers
+  are worth understanding rather than just recording:
+
+  - **Upload did not get slower.** Analysis does not embed anything; only matching does.
+    Anyone expecting the transformer to cost something on upload is looking at the wrong
+    endpoint.
+  - **Matching costs 8× more** (14.4 → 115.6 ms), and it is not a warmup artifact — the
+    first and steady-state figures are within 4 ms of each other. It is the job
+    description being encoded on every request. Cacheable if it ever matters; at 116 ms
+    against a 1.5 s target it does not yet.
+
+  The 6 s cold start is *after* S2.3a. It was 14 s before that fix, and would have been
+  unbounded on a machine with no network.
 
 ---
 
@@ -343,7 +462,13 @@ was rejected and why, and the worked numbers for one real example.
 - [ ] **S5.3 — [[Extending the Ontology]]** — adding skills, headings and verbs safely
 - [ ] **S5.4 — [[Troubleshooting]]** — symptom → cause → fix, seeded from every bug hit during the build
 - [ ] **S5.5 — [[Glossary]]** — the terms this vault uses, defined once
-- [ ] **S5.6 — [[Decision Log]]** — every non-obvious choice and what it beat
+- [/] **S5.6 — [[Decision Log]]** — every non-obvious choice and what it beat
+  *Started 2026-08-27, not finished. S2.4's acceptance criteria required somewhere to
+  record the hashing-vs-transformer numbers, so the note was created and seeded with the
+  five decisions made that day (D1–D5). It does not yet cover the choices made earlier in
+  the project — the chunking decision, the four match weights, the ten ATS point values,
+  BM25 over TF-IDF, and the `app/core` import rules. Those are listed at the bottom of
+  the note itself so the gap is visible from inside it rather than only from here.*
 
 ---
 
@@ -386,15 +511,20 @@ was rejected and why, and the worked numbers for one real example.
 
 ## Blocked / parked
 
-| Item | Reason | Unblocked when |
-|---|---|---|
-| [[#Sprint 2 — Turn the accuracy up]] (S2.2 – S2.5) | `torch` cannot load its native DLLs — the Microsoft Visual C++ 2015–2022 Redistributable is not installed on this machine | Someone with administrator rights runs <https://aka.ms/vs/17/release/vc_redist.x64.exe> and reopens the terminal |
+Nothing is blocked.
 
-> [!note] Being blocked here costs accuracy, not function
-> This is exactly the situation the hashing fallback exists for. The app runs, scores,
-> matches and recommends today — it simply says `degraded` while it does, because the
-> semantic signal is coming from hashed n-grams instead of a language model. Nothing
-> else on this board waits for it.
+The one entry that lived here — Sprint 2, waiting on the Microsoft Visual C++
+redistributable for `torch` — was cleared on 2026-08-27 when the runtime was installed
+on this machine. The sprint finished the same day.
+
+> [!note] What the block cost, and what it did not
+> Two months of this project ran on the hashing fallback, and that is why the fallback
+> is good. The app scored, matched and recommended the whole time; it said `degraded`
+> while doing it, and no other item on this board ever waited for the model. Keeping a
+> fallback that is genuinely usable — rather than a stub that throws — is what turned a
+> missing system DLL into a footnote instead of a stopped project. It is also what made
+> the A/B in [[Decision Log#D1 — The semantic backend is measured against its fallback, not assumed better]]
+> possible: a fallback you cannot switch back to is one you cannot measure against.
 
 ---
 
