@@ -76,7 +76,7 @@ This vault is the written half of the project. Open it in [Obsidian](https://obs
 | Frontend | React 19 + Vite + Tailwind v4, 6 screens |
 | Skill ontology | 169 skills across 10 categories |
 | Job corpus | 26 seed postings across 13 role families |
-| Automated tests | 184 tests, including architecture and privacy invariants, plus a live end-to-end check |
+| Automated tests | 200 tests, including architecture, layout-geometry and privacy invariants, plus a live end-to-end check |
 | Optional components | Sentence embeddings, trained role classifier — both degrade cleanly |
 
 > [!warning] Degraded mode is a real state, not a bug

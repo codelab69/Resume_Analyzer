@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 
 from app.config import settings
-from app.core import ats, matcher, pipeline, recommend, segment, skills
+from app.core import ats, extract, matcher, pipeline, recommend, segment, skills
 
 
 @pytest.fixture(scope="module")
@@ -54,6 +54,62 @@ class TestAtsStructure:
         for rule in weak.ats_report.rules:
             if rule.status == "fail":
                 assert rule.fix, f"Rule {rule.id} failed without telling the user what to do"
+
+
+class TestLayoutRule:
+    """Rule 3, single-column layout - the one worth 15 points.
+
+    This rule had no tests at all until 2026-08-27, and it was scoring a
+    genuine two-column resume 15/15. It is the rule most likely to decide
+    whether a real student's application is read by a human, so it gets the
+    most direct tests in this file.
+    """
+
+    @staticmethod
+    def _doc(blocks, columns, pages=1, warnings=None):
+        return extract.ExtractedDocument(
+            text="x" * 2000, blocks=blocks, page_count=pages, file_type="pdf",
+            reader="pymupdf", columns_per_page=columns, warnings=warnings or [],
+        )
+
+    @staticmethod
+    def _some_blocks():
+        return [extract.TextBlock(0, 40, 60 + i * 15, 500, 72 + i * 15, "line") for i in range(6)]
+
+    def test_a_two_column_document_fails(self):
+        rule = ats.rule_layout(self._doc(self._some_blocks(), [2]))
+        assert rule.earned == 0
+        assert rule.status == "fail"
+        assert rule.fix, "a failing layout must tell the student what to change"
+
+    def test_a_single_column_document_passes(self):
+        rule = ats.rule_layout(self._doc(self._some_blocks(), [1]))
+        assert rule.earned == 15
+        assert rule.status == "pass"
+        assert rule.fix == "", "nothing to fix, so nothing should be suggested"
+
+    def test_one_bad_page_out_of_two_earns_half(self):
+        # A two-column first page corrupts one page of sections, not both.
+        rule = ats.rule_layout(self._doc(self._some_blocks(), [2, 1], pages=2))
+        assert rule.earned == 7.5
+
+    def test_the_detail_names_the_widest_column_count(self):
+        rule = ats.rule_layout(self._doc(self._some_blocks(), [3]))
+        assert "3 columns" in rule.detail
+
+    def test_a_docx_with_tables_is_penalised_without_geometry(self):
+        # python-docx exposes no coordinates, so the table warning stands in.
+        doc = extract.ExtractedDocument(
+            text="x" * 2000, blocks=[], file_type="docx", reader="python-docx",
+            warnings=["This document uses tables (12 cells with text)."],
+        )
+        assert ats.rule_layout(doc).earned == 5
+
+    def test_a_docx_without_tables_passes(self):
+        doc = extract.ExtractedDocument(
+            text="x" * 2000, blocks=[], file_type="docx", reader="python-docx",
+        )
+        assert ats.rule_layout(doc).earned == 15
 
 
 class TestAtsBehaviour:

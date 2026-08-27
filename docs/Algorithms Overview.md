@@ -19,7 +19,7 @@ detail lives.
 
 | Question | Owned by | Approach | Detail |
 |---|---|---|---|
-| What does this file say? | `extract.py` | Block geometry, banded reading order | [[Text Extraction]] |
+| What does this file say? | `extract.py` | Gutter detection for columns, banded reading order within them | [[Text Extraction]] |
 | Where does each section start? | `segment.py` | Lexicon + structural heuristics, no model | [[Section Segmentation]] |
 | Who is this, and how long have they worked? | `entities.py` | Regex, then rules, then optional NER | [[Entity Extraction]] |
 | Which skills does this person have? | `skills.py` | Longest-match-wins n-gram index | [[Skill Matching]] |
@@ -56,17 +56,33 @@ exactly that.
 PyMuPDF first for speed and block geometry, pdfplumber as a fallback for table-heavy
 layouts, plain text last.
 
-The one algorithm worth naming here is the **reading-order fix**. Blocks are sorted by
-`(page, banded y, x)` rather than raw y:
+The one algorithm worth naming here is **recovering the reading order**, and it is two
+separate things that are easy to confuse for one.
+
+**Columns.** Each page is swept for vertical gutters — strips that no text crosses — and
+a page that splits is emitted one column at a time, left to right. Without this a
+two-column resume interleaves its sidebar into its main content, and
+[[Section Segmentation]] then reads the phone number as the EXPERIENCE section. The sweep
+runs on **word** boxes, not the reader's blocks, because a reader merges both cells of a
+row into one block when the generator emits the page row by row — and the gutter is gone
+before this code sees it.
+
+**Rows.** Inside a column, blocks are sorted by *banded* y and then x:
 
 ```python
-ordered = sorted(blocks, key=lambda b: (b.page, round(b.y0 / 5.0), b.x0))
+sorted(column, key=lambda b: (round(b.y0 / ROW_BAND_POINTS), b.x0))
 ```
 
-Rounding y into 5-point bands groups everything sitting on the same visual row, so a
-two-column resume reads left column then right column instead of interleaving them into
-nonsense. Sorting on raw y produces a document where every line alternates between the
-two columns — and every downstream stage then fails in a way that looks like its own bug.
+Rounding y into 5-point bands groups text on the same visual row, so a job title and its
+right-aligned date come out title-then-date even when the date's box starts half a point
+higher.
+
+> [!warning] These two were conflated until 2026-08-27
+> This page previously described the banding *as* the two-column fix — "so a two-column
+> resume reads left column then right column instead of interleaving them". Left-then-right
+> per row is exactly what interleaving is. There was no column handling at all, and ATS
+> rule 3 scored a genuine two-column resume 15/15. Recorded as S4.2a on the
+> [[Sprint Board]]; the measurements are in [[Text Extraction]].
 
 ### Section segmentation · [[Section Segmentation]]
 

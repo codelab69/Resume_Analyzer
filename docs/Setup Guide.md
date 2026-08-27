@@ -177,7 +177,7 @@ What a healthy machine reports:
 | Check | Expect |
 |---|---|
 | `smoke_test.py` | a full report, per-stage timings, ending `Smoke test passed.` |
-| `pytest -q` | `184 passed` |
+| `pytest -q` | `200 passed` |
 | `e2e_check.py` | `All end-to-end checks passed.` (30 checks) |
 
 Then the frontend check: open the app, upload
@@ -248,7 +248,7 @@ To install only the first two tiers, comment out the ML EXTRAS block in
 > python -m spacy download en_core_web_sm
 > ```
 >
-> Everything in this guide, and all 184 tests, pass without it. See
+> Everything in this guide, and all 200 tests, pass without it. See
 > [[Decision Log#D3 — spaCy is opt-in, not a pinned dependency]].
 
 > [!note] Why `numpy` is pinned below 2.1
@@ -277,7 +277,7 @@ Section 8 has the fix.
 > |---|---|
 > | `pip install -r requirements.txt` | exit 0, no conflicts |
 > | Installed versions vs pinned versions | 16 of 16 exact, 0 mismatches |
-> | `pytest -q` | **184 passed** |
+> | `pytest -q` | **184 passed** — the count on the day of that run; it is 200 now |
 > | `scripts/smoke_test.py` | passed |
 > | `scripts/e2e_check.py`, server run from that same venv | **all 30 passed** |
 > | `GET /api/health` | `ok`, `semantic_backend: transformer` |
@@ -325,7 +325,7 @@ Copy this and tick as you go.
 **Proof it works:**
 
 - [ ] `python scripts/smoke_test.py` → `Smoke test passed.`
-- [ ] `pytest -q` → `184 passed`
+- [ ] `pytest -q` → `200 passed`
 - [ ] `uvicorn app.main:app --port 8000` starts, `/docs` opens in a browser
 - [ ] `python scripts/e2e_check.py` → `All end-to-end checks passed.`
 - [ ] `npm run dev` starts, <http://localhost:5173> opens

@@ -205,14 +205,15 @@ def rule_sections(segmented: SegmentedResume, **_) -> RuleResult:
 
 
 def rule_layout(document: ExtractedDocument, **_) -> RuleResult:
-    """Detect multi-column layouts from block geometry.
+    """Score the document on whether it is laid out in a single column.
 
-    Blocks are grouped into 10-point horizontal bands. A band holding two or
-    more blocks whose x-ranges do not overlap is a row with side-by-side
-    columns. If enough bands look like that, the document is multi-column.
+    The detection itself is not done here. `extract` splits every page at its
+    column gutters while working out reading order, and records the count in
+    `columns_per_page`; this rule reads that number. Sharing one measurement is
+    deliberate — see the note below.
 
     Applicant tracking systems read a two-column PDF straight down the page,
-    which interleaves the two columns into nonsense. This rule is worth 15
+    which interleaves the sidebar into the main content. This rule is worth 15
     points because it is the single most common reason a good resume is
     rejected before a human sees it.
     """
@@ -234,40 +235,26 @@ def rule_layout(document: ExtractedDocument, **_) -> RuleResult:
             ),
         )
 
-    bands: dict[tuple[int, int], list] = {}
-    for block in document.blocks:
-        if not block.text.strip():
-            continue
-        bands.setdefault((block.page, int(block.y0 // 10)), []).append(block)
+    counts = document.columns_per_page or [1] * max(1, document.page_count)
+    multi = [n for n in counts if n > 1]
 
-    multi_column_bands = 0
-    for band_blocks in bands.values():
-        if len(band_blocks) < 2:
-            continue
-        ordered = sorted(band_blocks, key=lambda b: b.x0)
-        for left, right in zip(ordered, ordered[1:]):
-            # A real column break has a visible horizontal gap between the
-            # right edge of one block and the left edge of the next.
-            if right.x0 - left.x1 > 20:
-                multi_column_bands += 1
-                break
+    # Partial credit by page. A two-column first page in a two-page resume
+    # corrupts one page's sections, not both.
+    earned = 15.0 * (1 - len(multi) / len(counts))
+    worst = max(counts)
 
-    total_bands = max(1, len(bands))
-    ratio = multi_column_bands / total_bands
-
-    # Below 15% of bands is normal (a date right-aligned against a job title).
-    # Above 35% is a genuine two-column template.
-    if ratio <= 0.15:
-        earned = 15.0
-    elif ratio >= 0.35:
-        earned = 0.0
+    if not multi:
+        detail = f"Single column on all {len(counts)} page(s)."
     else:
-        earned = 15.0 * (1 - (ratio - 0.15) / 0.20)
+        detail = (
+            f"{len(multi)} of {len(counts)} page(s) use side-by-side columns "
+            f"({worst} columns at the widest)."
+        )
 
     return RuleResult(
         id="layout", title="Single-column, parser-friendly layout", points=15,
         earned=round(earned, 2), status=_grade(earned, 15),
-        detail=f"{multi_column_bands} of {total_bands} text rows have side-by-side columns.",
+        detail=detail,
         fix=(
             "Convert the resume to a single column. Two-column templates are "
             "read top-to-bottom by applicant tracking systems, which mixes the "

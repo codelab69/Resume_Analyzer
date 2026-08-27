@@ -154,6 +154,31 @@ consent wording that depends on this being true.
 
 ---
 
+## D6 — Reading order is recovered from word geometry, not taken from the library
+
+**Decision.** `extract` sweeps for vertical gutters, splits each page into columns, and
+emits one column at a time — using **word** boxes rather than the reader's blocks. The
+column count is stored on `ExtractedDocument.columns_per_page` and ATS rule 3 reads it,
+so the ordering and the score come from one measurement.
+
+**Alternative.** Use PyMuPDF's own ordering — `get_text("text")`, or
+`get_text("blocks", sort=True)`.
+
+**Evidence, 2026-08-27.** `sort=True` interleaves the columns, from the library that owns
+the geometry. `get_text("text")` is much better than expected and gets three of the four
+column fixtures right — but fails on a page whose generator emits the layout row by row,
+which is what a table-based template produces. The geometry also has to be walked anyway
+for rule 3, and that answer must come from the same measurement the ordering used or the
+two can disagree — which is precisely what was happening: a two-column resume was scored
+15/15 as single-column while its text was being scrambled as if it were not.
+
+The full comparison table, the three tests that decide what counts as a column, and why
+the share is measured in characters rather than blocks are in [[Text Extraction]]. It is
+kept there rather than duplicated here because that note is the one someone reads when
+the extractor is behaving oddly.
+
+---
+
 ## Still to record
 
 This note was started when S2.4 needed somewhere to put its numbers, so it currently

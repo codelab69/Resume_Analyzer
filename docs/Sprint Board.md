@@ -61,13 +61,13 @@ Everything ticked above was green at the same moment, on 2026-08-27:
 
 | Check | Result |
 |---|---|
-| `pytest` | **184 passed** in ~2.0 s (120 at the start of this session) |
+| `pytest` | **200 passed** in ~2.1 s (120 at the start of this session) |
 | `scripts/smoke_test.py` | passed |
 | `scripts/e2e_check.py` against live uvicorn | **all 30 checks passed, on the transformer backend** |
 | `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, notes empty |
 | `npm run build` | clean, no warnings, largest chunk 368 kB |
-| All three checks from a **clean venv built only from `requirements.txt`** | pytest 184, smoke passed, e2e 30/30 |
-| Vault link integrity | 198 links checked: 118 resolve, 80 point at notes still on this board, **0 broken**. One genuinely broken anchor was found and fixed — `[[Data Model#3. Deletion actually deletes]]` had been written without the section number, which Obsidian does not match |
+| All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 30/30 |
+| Vault link integrity | 221 links checked: 135 resolve, 86 point at notes still on this board, **0 broken**. One genuinely broken anchor was found and fixed — `[[Data Model#3. Deletion actually deletes]]` had been written without the section number, which Obsidian does not match |
 
 > [!important] The headline change on 2026-08-27
 > The semantic path is live. `/api/health` reports `ok` rather than `degraded` for the
@@ -77,11 +77,22 @@ Everything ticked above was green at the same moment, on 2026-08-27:
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Three defects were found by verifying rather than by looking
-> S1.2a, S2.5a and S3.4a were all found by *running* the thing being documented instead
-> of trusting an existing comment or a remembered number. None of them would have been
-> caught by reading the code, and one of them — the crash — was invisible to a green
-> test suite. That is the argument for the "Evidence" line on every tick.
+> [!note] Five defects have been found by verifying rather than by looking
+> S1.2a, S2.3a, S2.5a, S3.4a and S4.2a were all found by *running* the thing being
+> documented instead of trusting an existing comment or a remembered number. None of them
+> would have been caught by reading the code. Two were invisible to a green test suite,
+> and one — S4.2a — was invisible *because* the code read like a correct implementation:
+> clear docstring, named constants, a comment marking the important line, all of it
+> describing an intention rather than the behaviour. That is the argument for the
+> "Evidence" line on every tick.
+>
+> | Defect | Found while | Would code review have caught it? |
+> |---|---|---|
+> | S1.2a — optional import crashed the app | running the README's own steps | No — only on a machine missing a system DLL |
+> | S2.3a — 33 network calls at every boot | reading the startup log after a green health check | No — the response body said `ok` |
+> | S2.5a — warmup left 47 ms on the first request | measuring a number instead of quoting a comment | No |
+> | S3.4a — config described storage that never happened | writing down what is *not* stored | Possibly, by someone who checked |
+> | S4.2a — the two-column fix did not exist | generating a PDF that had two columns in it | No — the comment said it was handled |
 
 ---
 
@@ -432,7 +443,58 @@ file that owns the behaviour, and every wikilink in it resolves or is itself on 
   to total 100; the BM25 parameters, the four match weights and the two-stage retrieval
   sizes were read from `recommend.py` and `matcher.py`. Includes the ATS-vs-match
   comparison, which is the distinction students and writeups most often collapse.*
-- [ ] **S4.2 — [[Text Extraction]]** — block geometry and the two-column reading-order fix
+- [x] **S4.2 — [[Text Extraction]]** — block geometry and the two-column reading-order fix
+  *Evidence 2026-08-27: every claim in the note was checked against the code before it was
+  written, and the numbers in it were measured rather than recalled — five PDFs were
+  generated for the purpose (single-column, two-column, two-column emitted right-first,
+  two-column emitted row-by-row, and single-column with right-aligned dates) and every
+  table in the note comes from running the extractor over them. Writing it is what found
+  S4.2a below. Includes four rejected alternatives, three of them rejected on measurements
+  rather than on argument — and one, `get_text("text")`, that turned out to be much better
+  than expected and is written up that way.*
+
+- [x] **S4.2a — Defect: the two-column reading-order fix did not exist** *(unplanned)*
+  Found by generating a two-column PDF and reading the output, instead of trusting the
+  comment that said this was handled.
+  **Cause, part one — the ordering.** `_blocks_to_text` sorted blocks by *banded* y then
+  x, with a comment calling it "THE IMPORTANT BIT" and claiming it made a two-column
+  resume "read left column then right column *per row* instead of zig-zagging". Left-then-
+  right per row **is** the zig-zag. On the test page it produced output byte-identical to
+  a naive y sort, because the two columns' rows are never within 5 points of each other,
+  so the banding never fired at all.
+  The damage was not cosmetic. [[Section Segmentation]] takes the text between one heading
+  and the next, so interleaving assigns the phone number to EXPERIENCE and leaves SKILLS
+  and EDUCATION **empty**.
+  **Cause, part two — the detection.** ATS rule 3, worth 15 points and described in its
+  own docstring as "the single most common reason a good resume is rejected", scored the
+  same two-column PDF **15/15, pass** — identical to the single-column version of the same
+  content. It grouped blocks into 10-point bands and looked for side-by-side pairs, and a
+  sidebar layout's rows do not line up, so almost no band ever contained one. The rule had
+  **no tests at all**, which is how it survived.
+  **Fix:** columns are now detected by sweeping for vertical gutters, and a multi-column
+  page is emitted one column at a time. The count is computed once during extraction and
+  stored on `ExtractedDocument.columns_per_page`, which rule 3 reads — one measurement,
+  so the text ordering and the score cannot disagree. Detection runs on **words** rather
+  than blocks, because a reader merges both cells of a row into one block when the
+  generator emits a two-column page row by row, and the gutter is gone before this code
+  sees it.
+  **AC:** a two-column resume segments into the same sections as the same content in one
+  column, and rule 3 fails it.
+  *Evidence 2026-08-27: SKILLS `(empty)` → `Python | FastAPI | PostgreSQL | Docker`,
+  EDUCATION `(empty)` → `B.E. Computer Science | CGPA 8.7/10`, EXPERIENCE
+  `+91 98765 43210` → the job entry. Rule 3 on the same file **15/15 pass → 0/15 fail**,
+  with the detail line naming the page. Verified over real HTTP as well as in process.
+  `pytest` **200 passed** (181 at the start of the day), with 16 new tests. All five
+  design decisions mutation-tested — each breaks exactly one test, by name; the table is
+  in the note. Two of the new tests initially passed for the wrong reason and were
+  rewritten until the mutations caught them.*
+
+  > [!note] The comment was the bug
+  > Nothing here was found by reading the code, because the code read exactly like a
+  > working column fix — a clear docstring, a named constant, a comment marking the
+  > important line. Every one of those was describing an intention. The defect only became
+  > visible on the first PDF that had two columns in it, which is the third time on this
+  > board that running the thing has beaten reviewing it.
 - [ ] **S4.3 — [[Section Segmentation]]** — finding headings with no model, and the four false-positive traps
 - [ ] **S4.4 — [[Entity Extraction]]** — contact details, and interval merging for experience duration
 - [ ] **S4.5 — [[Skill Matching]]** — longest-match-wins n-gram indexing and the ambiguity problem
@@ -462,13 +524,23 @@ was rejected and why, and the worked numbers for one real example.
 - [ ] **S5.3 — [[Extending the Ontology]]** — adding skills, headings and verbs safely
 - [ ] **S5.4 — [[Troubleshooting]]** — symptom → cause → fix, seeded from every bug hit during the build
 - [ ] **S5.5 — [[Glossary]]** — the terms this vault uses, defined once
-- [/] **S5.6 — [[Decision Log]]** — every non-obvious choice and what it beat
-  *Started 2026-08-27, not finished. S2.4's acceptance criteria required somewhere to
-  record the hashing-vs-transformer numbers, so the note was created and seeded with the
-  five decisions made that day (D1–D5). It does not yet cover the choices made earlier in
-  the project — the chunking decision, the four match weights, the ten ATS point values,
-  BM25 over TF-IDF, and the `app/core` import rules. Those are listed at the bottom of
-  the note itself so the gap is visible from inside it rather than only from here.*
+- [x] **S5.6a — [[Decision Log]] exists and covers today's decisions**
+  Split out of S5.6 rather than left half-open, per the note on method at the bottom of
+  this board. S2.4's acceptance criteria required somewhere to record the
+  hashing-vs-transformer numbers, which is what forced the note into existence.
+  **AC:** the note exists, and every decision made on 2026-08-27 is in it with the
+  evidence behind it.
+  *Evidence 2026-08-27: `docs/Decision Log.md`, five entries (D1–D5), each stating the
+  decision, the alternative it beat and the measurement. Every inbound anchor link from
+  this board resolves.*
+
+- [ ] **S5.6b — Backfill the decisions made before 2026-08-27**
+  **AC:** the five gaps listed at the bottom of [[Decision Log]] are written up to the
+  same standard — decision, alternative, evidence.
+  *The gaps: chunk-to-chunk matching with max-pooling (described in [[Analysis Pipeline]]
+  as the single biggest accuracy decision, with no ablation recorded anywhere), the four
+  match weights, the ten ATS point values, BM25 over TF-IDF cosine, and the `app/core`
+  import rules now enforced by `test_architecture.py`.*
 
 ---
 

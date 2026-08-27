@@ -104,6 +104,243 @@ class TestExtract:
         assert "Caf" in document.text
 
 
+class TestColumnGeometry:
+    """Reading order on a multi-column page, and what counts as a column.
+
+    Every case here is built from explicit block coordinates rather than a PDF,
+    so the geometry under test is visible in the test itself and the tests run
+    without PyMuPDF installed. The coordinates come from real PDFs generated for
+    this purpose; the measurements are written up in the Text Extraction note.
+    """
+
+    @staticmethod
+    def _block(page, x0, y0, x1, y1, text):
+        return extract.TextBlock(page, x0, y0, x1, y1, text)
+
+    def _sidebar_page(self):
+        """A left sidebar and a main column, the standard resume template."""
+        left = [
+            self._block(0, 40, 48, 94, 60, "CONTACT"),
+            self._block(0, 40, 67, 122, 79, "kiran@example.com"),
+            self._block(0, 40, 114, 68, 126, "SKILLS"),
+            self._block(0, 40, 129, 72, 141, "Python and FastAPI and Docker"),
+        ]
+        right = [
+            self._block(0, 230, 43, 366, 60, "KIRAN ANANDAN"),
+            self._block(0, 230, 105, 384, 117, "EXPERIENCE"),
+            self._block(0, 230, 120, 414, 132, "Built REST APIs serving 3000 requests a day."),
+            self._block(0, 230, 135, 398, 147, "Reduced query time from 400ms to 90ms."),
+        ]
+        return left, right
+
+    def test_a_sidebar_layout_is_two_columns(self):
+        left, right = self._sidebar_page()
+        assert len(extract._page_columns(left + right)) == 2
+
+    def test_each_column_comes_out_contiguous(self):
+        """The whole point. Interleaved columns destroy section segmentation."""
+        left, right = self._sidebar_page()
+        text = extract._blocks_to_text(left + right)
+        lines = text.splitlines()
+        last_left = max(lines.index(b.text) for b in left)
+        first_right = min(lines.index(b.text) for b in right)
+        assert last_left < first_right, "columns interleaved: " + repr(lines)
+
+    def test_a_single_column_page_is_left_alone(self):
+        blocks = [
+            self._block(0, 40, 60 + i * 15, 500, 72 + i * 15,
+                        "A line of body text number %d" % i)
+            for i in range(8)
+        ]
+        assert len(extract._page_columns(blocks)) == 1
+
+    def test_right_aligned_dates_are_not_a_second_column(self):
+        """The false positive this detector exists to avoid.
+
+        Every job title carries a right-aligned date. Nothing crosses the gap in
+        front of those dates and they run the full height of the page, so the
+        only thing standing between them and being called a column is how much
+        text they hold.
+
+        The numbers here are set to the shape measured on a real PDF read as
+        words: the dates are **16.7% of the blocks** - which clears a 15% block
+        threshold - and **8.0% of the characters**, because a date is nineteen
+        characters and a bullet is sixty. Swap the character measure for a block
+        count and this test fails, which is the whole reason it is written this
+        way round.
+        """
+        blocks = []
+        y = 60.0
+        for i in range(4):
+            blocks.append(self._block(0, 40, y, 300, y + 12,
+                                      "Backend Intern, Company Number %d" % i))
+            blocks.append(self._block(0, 430, y - 0.6, 540, y + 11,
+                                      "Jun 2024 - Sep 2024"))
+            y += 15
+            for bullet in range(4):
+                blocks.append(self._block(
+                    0, 48, y, 300, y + 12,
+                    "Built and shipped a service that people actually used %d" % bullet,
+                ))
+                y += 13
+            y += 7
+
+        dates = [b for b in blocks if b.x0 == 430]
+        chars = sum(len(b.text) for b in blocks)
+        # The trap, stated in numbers so a reader can see it without a debugger.
+        assert 0.15 < len(dates) / len(blocks) < 0.20
+        assert sum(len(b.text) for b in dates) / chars < 0.15
+
+        assert len(extract._page_columns(blocks)) == 1
+
+    def test_a_row_reads_left_to_right_even_when_the_right_block_sits_higher(self):
+        """Banded y, not raw y.
+
+        The date box is placed 0.6pt above the title it belongs to, which is
+        ordinary typesetting. A raw y sort emits the date first, and the
+        segmenter then reads a date where it expects a job title.
+        """
+        title = self._block(0, 40, 100.0, 300, 112, "Backend Intern, Northwind Systems")
+        date = self._block(0, 430, 99.4, 540, 111, "Jun 2024 - Sep 2024")
+        body = self._block(0, 48, 115, 420, 127,
+                           "Built REST APIs serving three thousand requests a day.")
+        heading = self._block(0, 40, 60, 300, 76, "EXPERIENCE")
+        lines = extract._blocks_to_text([date, title, body, heading]).splitlines()
+        assert lines.index(title.text) < lines.index(date.text)
+
+    def test_groups_that_do_not_run_alongside_each_other_are_not_columns(self):
+        """Columns are parallel. Two stacked groups only look like columns.
+
+        A block of text on the left at the top of the page and another on the
+        right near the bottom leave a clean vertical gap when projected onto the
+        x-axis - nothing crosses it, and both sides carry plenty of text. The
+        only thing that says these are not columns is that they never sit beside
+        each other. Remove the vertical-overlap check and this test fails.
+        """
+        top_left = [
+            self._block(0, 40, 40 + i * 15, 250, 52 + i * 15,
+                        "A line in the upper left group number %d" % i)
+            for i in range(6)
+        ]
+        bottom_right = [
+            self._block(0, 320, 400 + i * 15, 550, 412 + i * 15,
+                        "A line in the lower right group number %d" % i)
+            for i in range(6)
+        ]
+        blocks = top_left + bottom_right
+        # Both sides are substantial and nothing crosses the gap, so every other
+        # guard in _is_column_break would let this through.
+        chars = sum(len(b.text) for b in blocks)
+        assert sum(len(b.text) for b in bottom_right) / chars > 0.15
+
+        assert len(extract._page_columns(blocks)) == 1
+
+    def test_three_columns_split_without_a_special_case(self):
+        blocks = []
+        for col_x in (40, 230, 420):
+            for i in range(4):
+                blocks.append(self._block(
+                    0, col_x, 60 + i * 15, col_x + 140, 72 + i * 15,
+                    "Column %d line %d with enough text to carry weight" % (col_x, i),
+                ))
+        assert len(extract._page_columns(blocks)) == 3
+
+    def test_a_multi_column_page_is_rebuilt_from_words_not_blocks(self):
+        """Blocks can straddle a gutter; words cannot.
+
+        When a generator emits a two-column layout row by row, the reader
+        merges each row's two cells into one block spanning both columns. The
+        gutter is gone before any of this code sees it, and no reordering of
+        blocks can separate text that is inside one of them. Detection and
+        reordering therefore run on words.
+        """
+        merged_blocks = [
+            self._block(0, 40, 43, 366, 60, "CONTACT\nKIRAN ANANDAN"),
+            self._block(0, 40, 67, 317, 96, "kiran@example.com\nBackend Developer"),
+            self._block(0, 40, 105, 414, 147, "SKILLS\nEXPERIENCE"),
+        ]
+        words = []
+        for i, (left, right) in enumerate(
+            [("CONTACT", "KIRAN"), ("kiran@example.com", "Backend"),
+             ("SKILLS", "EXPERIENCE"), ("Python", "Built"), ("Docker", "Reduced")]
+        ):
+            y = 43.0 + i * 20
+            words.append(self._block(0, 40, y, 130, y + 12, left))
+            words.append(self._block(0, 230, y, 340, y + 12, right))
+
+        # The merged blocks hide the gutter; the words do not.
+        assert len(extract._page_columns(merged_blocks)) == 1
+        assert len(extract._page_columns(words)) == 2
+
+        columns = extract._count_columns(words, page_count=1)
+        text = extract._pdf_text(merged_blocks, words, columns)
+        lines = text.splitlines()
+        assert lines.index("SKILLS") < lines.index("KIRAN"), (
+            "the left column must finish before the right one starts: %r" % lines
+        )
+
+    def test_column_counts_are_recorded_per_page(self):
+        left, right = self._sidebar_page()
+        page_two = [
+            self._block(1, 40, 60 + i * 15, 500, 72 + i * 15, "Second page line %d" % i)
+            for i in range(6)
+        ]
+        assert extract._count_columns(left + right + page_two, page_count=2) == [2, 1]
+
+
+class TestPdfReaderIntegration:
+    """The one seam the synthetic-geometry tests above cannot reach.
+
+    Everything in TestColumnGeometry calls the ordering functions directly with
+    hand-built coordinates, which is what makes those tests readable and lets
+    them run with no PDF library installed. It also means they cannot catch a
+    mistake in *which* geometry gets fed to them - `_count_columns(blocks, ...)`
+    instead of `_count_columns(words, ...)` passes every one of them.
+
+    That substitution is exactly the bug this whole area started as, so it needs
+    a test that reads a real PDF. Skipped when PyMuPDF is unavailable, which is
+    a supported configuration for the rest of the suite.
+    """
+
+    @staticmethod
+    def _two_column_pdf_emitted_row_by_row(fitz):
+        """A two-column page whose generator walks it as a table.
+
+        Left cell, right cell, next row. A layout engine rendering a table does
+        this, and it makes the reader merge each row's two cells into one block
+        spanning both columns - which hides the gutter from block geometry.
+        """
+        left = ["CONTACT", "kiran@example.com", "SKILLS", "Python", "Docker"]
+        right = ["KIRAN ANANDAN", "Backend Developer", "EXPERIENCE",
+                 "Built REST APIs serving three thousand requests", "Reduced latency"]
+        doc = fitz.open()
+        page = doc.new_page(width=595, height=842)
+        y = 60.0
+        for left_text, right_text in zip(left, right):
+            page.insert_text((40, y), left_text, fontsize=10, fontname="helv")
+            page.insert_text((230, y), right_text, fontsize=10, fontname="helv")
+            y += 20
+        data = doc.tobytes()
+        doc.close()
+        return data
+
+    def test_columns_are_detected_even_when_blocks_span_the_gutter(self):
+        fitz = pytest.importorskip("fitz", reason="PyMuPDF not installed")
+        data = self._two_column_pdf_emitted_row_by_row(fitz)
+
+        document = extract._extract_pdf_pymupdf(data)
+        assert document is not None
+        assert document.columns_per_page == [2], (
+            "block geometry reports one column on this page because the reader "
+            "merged across the gutter; detection must run on words"
+        )
+
+        lines = document.text.splitlines()
+        assert lines.index("SKILLS") < lines.index("KIRAN ANANDAN"), (
+            "the sidebar must finish before the main column starts: %r" % lines
+        )
+
+
 # ---------------------------------------------------------------------------
 # segment
 # ---------------------------------------------------------------------------
