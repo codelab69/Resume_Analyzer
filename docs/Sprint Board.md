@@ -61,7 +61,7 @@ Everything ticked above was green at the same moment, on 2026-08-29:
 
 | Check | Result | Measured |
 |---|---|---|
-| `pytest` | **268 passed** in 2.5 s (120 at the start of Sprint 1, 252 before S4.6) | 2026-08-29 |
+| `pytest` | **283 passed** in 2.7 s (120 at the start of Sprint 1, 268 before S4.7) | 2026-08-29 |
 | `scripts/smoke_test.py` | passed, TOTAL 201 ms | 2026-08-29 |
 | `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed, on the transformer backend** | 2026-08-29 |
 | `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, notes empty | 2026-08-29 |
@@ -81,11 +81,12 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Sixteen defects have been found by verifying rather than by looking
+> [!note] Twenty defects have been found by verifying rather than by looking
 > S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a, S4.4b, S4.4c, S4.5a, S4.5b,
-> S4.5c, S4.6a, S4.6b and S4.6c were all found by *running* the thing being documented
-> instead of trusting an existing comment or a remembered number. None of them would have
-> been caught by reading the code. Ten were invisible to a green test suite, and one — S4.2a — was invisible *because* the code read
+> S4.5c, S4.6a, S4.6b, S4.6c, S4.7a, S4.7b, S4.7c and S4.7d were all found by *running* the
+> thing being documented instead of trusting an existing comment or a remembered number.
+> None of them would have been caught by reading the code. Fourteen were invisible to a
+> green test suite, and one — S4.2a — was invisible *because* the code read
 > like a correct implementation: clear docstring, named constants, a comment marking the
 > important line, all of it describing an intention rather than the behaviour. That is the
 > argument for the "Evidence" line on every tick.
@@ -108,6 +109,10 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > | S4.6a — a zero-confidence prediction was reported as certain | writing the module's first tests | No - `if not self.alternatives: return True` reads as a sensible default |
 > | S4.6b — role keywords were ranked by ubiquity, not distinctiveness | asking whether the code did what the comment said | Possibly, by someone who thought about what the ranking is for |
 > | S4.6c — the code named three scripts that had never existed | looking for one of them | Only by checking the path; three files and a log line all agreed |
+> | S4.7a — the date rule scored its own recommended format at zero | writing out the four date shapes and running the rule | No - three separate patterns, each defensible alone, wrong together |
+> | S4.7b — a bare year counted as a quantified achievement | typing the bullets a student actually writes | Possibly, by someone who read `[\d,]{2,}` as "any two digits" |
+> | S4.7c — a resume with no skills got full marks on rule 7 | running the pipeline over an empty resume and reading the rows | No - the branch has a correct comment explaining why it is right |
+> | S4.7d — `i.e.` counted as a first-person pronoun | running the pattern against text that is not a resume bullet | Unlikely - `\bi\b` under `re.I` looks exactly right |
 >
 > S4.3b, S4.4c and S4.5c are one defect three times, in three costumes: a count in the
 > README, a count in eleven vault files, four examples in docstrings. Prose that sits next
@@ -889,7 +894,95 @@ file that owns the behaviour, and every wikilink in it resolves or is itself on 
   from the `matcher.py` docstring fails exactly
   `test_every_script_the_code_names_exists_or_says_it_does_not`.*
 
-- [ ] **S4.7 — [[ATS Scoring]]** — the ten rules, their weights, and why they add to 100
+- [x] **S4.7 — [[ATS Scoring]]** — the ten rules, their weights, and why they add to 100
+  *Evidence 2026-08-29: every rule fed the input it exists to judge, rather than read. The
+  full rule table, both fixtures' per-rule breakdowns and the stage timing (0.41 ms for all
+  ten rules, against 169 ms in classification) all measured here. A "known limits" section
+  with four entries, one of which concedes that the sample resume's own date score is the
+  strictest defensible reading rather than the only one. Writing it found S4.7a–S4.7d.
+  `pytest` **283 passed** (268 before), 15 new tests.*
+
+- [x] **S4.7a — Defect: rule 10 scored the format its own advice recommends at zero** *(unplanned)*
+  Found by writing out each of the four date shapes a resume can use and running the rule on
+  them.
+  **Cause, three faults compounding in one small rule.** `[A-Za-z]{3,9}` before a year is not
+  a month, so `Acme 2023` and `University 2021` were month-and-year dates. `year_only` matched
+  the year *inside* a `month_year` match, because the three patterns were each run
+  independently over the same characters — so `Jun 2023` registered as two formats at once.
+  And `\d{1,2}[/-]\d{2,4}` matched `7/10` inside `CGPA: 8.7/10`, so every resume printing a
+  CGPA — which in India is most of them — was reported as using numeric dates it does not
+  contain.
+  Together: a resume using nothing but `Jun 2023 - Aug 2024` was told it used two formats and
+  scored **0.00/5**, under a fix line reading *"'Jun 2024 - Aug 2024' is the safest"*. The one
+  shape that scored 5/5 was numeric, which the same sentence implies is riskier. The rule was
+  inverted.
+  **Fix:** `_MONTH` is an alternation of real month names; the numeric form requires a real
+  month and a four-digit year — the same tightening `entities._DATE_SIDE` needed in S4.4a, for
+  the same reason; and `count_date_forms` claims spans in order of specificity so no character
+  is counted twice. That is longest-match-wins from [[Skill Matching]] applied to dates.
+  **AC:** each of the four consistent shapes scores 5/5, a genuinely mixed resume does not, a
+  CGPA is not a date, and an impossible month is not a numeric date.
+  *Evidence 2026-08-29, run on both versions: `Jun 2023 - Aug 2024` only **0.00 → 5.00**;
+  year-only **1.67 → 5.00**; numeric **5.00 → 5.00**; genuinely mixed **0.00**, correctly.
+  Sample resume rule 10 **0.56 → 1.25** — still low, and the note explains why that is right:
+  it writes its degree as `2022 - 2026` and its jobs as `Jun 2025 - Aug 2025`, which really is
+  two formats. The 0.56 was low for the wrong reason, the CGPA making it three.*
+
+- [x] **S4.7b — Defect: rule 6 counted a bare year as a quantified achievement** *(unplanned)*
+  Found by writing the bullets a student actually types and asking the pattern about them.
+  **Cause:** `[\d,]{2,}` matches any run of two or more digits, so `Built a website in 2024`
+  and `Won the 2022 hackathon` were both scored as containing a measurable figure. Rule 6 is
+  worth **15 points** and its advice line reports the count directly — *"only 3 of 8 bullets
+  contain a number"* — so on any resume that dates work inside the bullet, the score and the
+  advice were both wrong in the flattering direction. A student is told their achievements are
+  quantified when not one of them is.
+  **Fix:** the alternation is ordered and the bare-number branch excludes a four-digit year.
+  Unit-attached numbers match an earlier branch, so `Served 2000 users` is still a measurement
+  while `2024` is a date.
+  **AC:** a year is not a figure, a figure is still a figure, and a number attached to a unit
+  survives even when it looks like a year.
+  *Evidence 2026-08-29, run on both versions: `Built a website in 2024` **quantified → not**,
+  `Won the 2022 hackathon` **quantified → not**; unchanged: 40%, `1,200 records`, `14 REST API
+  endpoints`, `6 hours`, `2000 users`. Sample resume rule 6 **15/15 either way** — its bullets
+  carry real figures, and the note says so rather than quoting a fixture that happens to move.
+  Accepted cost written down: `Processed 2048 files` is no longer counted.*
+
+- [x] **S4.7c — Defect: rule 7 gave full marks to a resume with no skills, and blamed the model** *(unplanned)*
+  Found by running the pipeline over a resume with nothing in it and reading the rule rows.
+  **Cause:** an empty `role_keywords` has two entirely different causes and the rule had one
+  branch for both. The classifier being unavailable is a missing optional component, which
+  must never look like a failing resume — full points, say why. The classifier having run and
+  predicted nothing, because the resume shows no skill any role asks for, is not the rule
+  failing to run: it is the answer, and the worst one available. It took the first branch.
+  A resume with no contact details, no headings and no skills scored **15.0/15 pass** on rule
+  7 with the detail *"Role-specific keyword scoring is unavailable because no trained role
+  model is loaded"* — fifteen free points on the resume that needed the advice most, with an
+  explanation pointing at the tool instead of the document.
+  **Fix:** "no skills detected" is its own branch — 0 of 15, `fail`, and a fix saying to add a
+  SKILLS section because nothing else on the page can be scored until it is there. The genuine
+  unavailable branch keeps full marks and stops blaming a trained model that was never the
+  reason.
+  **AC:** an empty resume loses the rule; a resume with skills but no classifier still loses
+  nothing.
+  *Evidence 2026-08-29, run on both versions: a skills-free resume, rule 7 **15.0/15 pass →
+  0.0/15 fail**, ATS total **54 → 39**. `weak_resume.txt` unchanged at **37** — it has one
+  recognised skill, so it was always taking the scoring branch.*
+
+- [x] **S4.7d — Defect: two smaller ones in the same sweep** *(unplanned)*
+  **`i.e.` was writing about yourself.** `\b(?:i|me|my|mine|myself)\b` under `re.I` matches the
+  `i` in **i.e.** and in **i/o**, so *"Reduced i/o wait on the disk"* cost a point of rule 9.
+  Fixed with a negative lookahead; a real pronoun still costs its point.
+  **The module told you to run a test file that does not exist.** `ADDING A RULE` said
+  "`test_ats.py` asserts that total". The assertion is real and lives in
+  `tests/test_scoring.py`; there is no `test_ats.py`. This is S4.6c one story later — a path
+  written beside code and never followed — and it is why the control test added there scans
+  `app/` for paths rather than for one particular kind.
+  *Evidence 2026-08-29: `i.e.` and `i/o` **1 pronoun → 0**; `I led a team` still **4.0/5** and
+  `Led a team` still **5.0/5**. Six mutations across S4.7a–S4.7d, each failing the tests that
+  name it; the month-name mutation also fails
+  `test_every_docstring_example_runs_and_passes`, because `count_date_forms` carries a doctest
+  — the S4.5c control catching a regression in a module it was not written for.*
+
 - [ ] **S4.8 — [[Job Matching]]** — the four signals and the weighted formula
 - [ ] **S4.9 — [[Job Recommendation]]** — retrieve-then-rerank, and BM25 written out longhand
 

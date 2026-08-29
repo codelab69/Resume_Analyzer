@@ -19,8 +19,8 @@ diagnosis: "Add a phone number to the header", not "Phone number missing".
 ADDING A RULE
 -------------
 Write a function returning a RuleResult, register it in RULES, and adjust the
-points so the total is still 100. `test_ats.py` asserts that total, so an
-unbalanced change fails the test suite rather than silently rescaling.
+points so the total is still 100. `tests/test_scoring.py` asserts that total,
+so an unbalanced change fails the test suite rather than silently rescaling.
 """
 
 from __future__ import annotations
@@ -43,7 +43,9 @@ QUANTIFIED_TARGET = 0.50
 BULLET_MIN_WORDS = 10
 BULLET_MAX_WORDS = 25
 
-# Clichés and first-person markers. Each occurrence costs a share of rule 9.
+# Clichés and first-person markers. Each distinct phrase found costs one point
+# of rule 9, and pronouns cost one each up to three - repeating a cliché is
+# not three times the problem, but three different ones are.
 WEAK_PHRASES = [
     "hardworking", "hard working", "team player", "responsible for",
     "duties included", "go-getter", "think outside the box", "self motivated",
@@ -51,13 +53,31 @@ WEAK_PHRASES = [
     "results-driven", "dynamic professional", "passionate about",
     "good communication skills", "quick learner",
 ]
-_FIRST_PERSON = re.compile(r"\b(?:i|me|my|mine|myself)\b", re.I)
+# A bare "i" is a pronoun only when it is a word. Under re.I the obvious
+# pattern also matches the "i" in "i.e." and in "i/o", so a resume mentioning
+# either was docked a point for writing in the first person.
+_FIRST_PERSON = re.compile(r"\b(?:i(?![./])|me|my|mine|myself)\b", re.I)
 
 # A quantified bullet contains a number, a percentage, a currency amount or a
 # scale word attached to a figure.
+#
+# The branches are ordered, and the order matters. The last one is a bare
+# number, and it excludes a four-digit year: "Built a website in 2024" and
+# "Won the 2022 hackathon" are not achievements with figures in them, and the
+# original `[\d,]{2,}` counted every dated bullet on every resume as
+# quantified. A year attached to a unit still counts, because the unit branch
+# runs first - "2000 users" is a measurement, "2024" is a date.
+#
+# Accepted cost: "Processed 2048 files" is not counted, because 2048 reads as
+# a year and "files" is not in the unit list. Under-counting a real figure
+# costs the student advice they can act on; over-counting tells them their
+# resume is quantified when it is not, and they act on nothing.
 _QUANTIFIED = re.compile(
-    r"\d+\s*%|\b(?:rs\.?|inr|usd|eur|\$|₹|€)\s*[\d,]+|\b[\d,]{2,}\b"
-    r"|\b\d+\s*(?:x|times|users?|records?|hours?|days?|weeks?|months?|ms|seconds?)\b",
+    r"\d+\s*%"
+    r"|\b(?:rs\.?|inr|usd|eur|\$|₹|€)\s*[\d,]+"
+    r"|\b\d+\s*(?:x|times|users?|records?|rows?|requests?|queries|hours?|days?"
+    r"|weeks?|months?|ms|seconds?|students?|teams?|members?|endpoints?|tests?)\b"
+    r"|\b(?!(?:19|20)\d{2}\b)[\d,]{2,}\b",
     re.I,
 )
 
@@ -68,11 +88,63 @@ REQUIRED_SECTIONS = ["EDUCATION", "SKILLS"]
 EXPERIENCE_LIKE = ["EXPERIENCE", "PROJECTS"]
 
 # Date formats, for the consistency rule.
+#
+# Two things here were wrong for as long as the rule existed, and they
+# compounded. `[A-Za-z]{3,9}` accepted any word before a year, so "Acme 2023"
+# counted as a month-and-year date. And `year_only` matched the year *inside*
+# a month-and-year match, so "Jun 2023" registered as both formats at once -
+# which meant a resume using nothing but "Jun 2023 - Aug 2024", the format
+# this rule's own fix text calls the safest, was reported as using two formats
+# and scored 0 out of 5.
+_MONTH = (
+    r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?"
+    r"|jul(?:y)?|aug(?:ust)?|sep(?:t)?(?:ember)?|oct(?:ober)?|nov(?:ember)?"
+    r"|dec(?:ember)?)"
+)
 _DATE_FORMS = {
-    "month_year": re.compile(r"\b[A-Za-z]{3,9}\.?\s+(?:19|20)\d{2}\b"),
-    "numeric": re.compile(r"\b\d{1,2}[/-]\d{2,4}\b"),
+    "month_year": re.compile(rf"\b{_MONTH}\.?\s+(?:19|20)\d{{2}}\b", re.I),
+    # A month and a four-digit year. The original `\d{1,2}[/-]\d{2,4}` also
+    # matched "7/10" inside "CGPA: 8.7/10", so every resume printing a CGPA
+    # was reported as using numeric dates it does not contain. Requiring a
+    # real month and a full year is the same tightening `_DATE_SIDE` needed
+    # in entities.py for S4.4a, for the same reason.
+    "numeric": re.compile(r"(?<![\d./-])(?:0?[1-9]|1[0-2])[/-](?:19|20)\d{2}\b"),
     "year_only": re.compile(r"(?<![/\d-])(?:19|20)\d{2}(?![/\d-])"),
 }
+
+# The order the formats are claimed in. A longer, more specific form takes its
+# characters first, so the year inside "Jun 2023" cannot also be counted as a
+# bare year. Same rule as the longest-match-wins scan in skills.py: a
+# character belongs to one match.
+_DATE_FORM_ORDER = ("month_year", "numeric", "year_only")
+
+
+def count_date_forms(text: str) -> dict[str, int]:
+    """How many dates of each format the text uses, counting no character twice.
+
+    Claiming spans in order is what stops "Jun 2023" being counted as both a
+    month-and-year date and a bare year.
+
+        >>> count_date_forms("Jun 2023 - Aug 2024")
+        {'month_year': 2}
+        >>> count_date_forms("Acme 2021 - 2022")
+        {'year_only': 2}
+    """
+    claimed: list[tuple[int, int]] = []
+    counts: dict[str, int] = {}
+
+    for name in _DATE_FORM_ORDER:
+        found = 0
+        for match in _DATE_FORMS[name].finditer(text):
+            start, end = match.span()
+            if any(start < taken_end and taken_start < end
+                   for taken_start, taken_end in claimed):
+                continue
+            claimed.append((start, end))
+            found += 1
+        if found:
+            counts[name] = found
+    return counts
 
 
 @dataclass
@@ -390,11 +462,34 @@ def rule_keywords(
 ) -> RuleResult:
     """Overlap between the resume's skills and the predicted role's vocabulary.
 
-    `role_keywords` comes from the classifier. When no classifier artifact is
-    present the rule cannot run, so it awards full points and says why - a
-    missing optional component must never look like a failing resume.
+    `role_keywords` comes from the classifier. There are two different reasons
+    it can be empty, and they must not be scored the same way:
+
+      * The classifier could not run at all. That is a missing optional
+        component, and a missing component must never look like a failing
+        resume, so the rule awards full points and says so.
+      * The classifier ran and predicted nothing, because the resume shows no
+        skill any role asks for. That is not the rule failing to run. That is
+        the answer, and it is the worst possible one.
+
+    The second case used to take the first branch: a resume with no detectable
+    skills scored **15 out of 15** on this rule and was told the reason was a
+    missing model. Fifteen free points on the resume that needed the advice
+    most, with an explanation that pointed at the tool instead of the document.
     """
     found = {hit.name for hit in skill_hits}
+
+    if not role_keywords and not found:
+        return RuleResult(
+            id="keywords", title="Skill keywords match the target role", points=15,
+            earned=0.0, status="fail",
+            detail="No skills were detected, so none can match a role's vocabulary.",
+            fix=(
+                "Add a SKILLS section listing the languages, frameworks and "
+                "tools you have actually used, one line, comma separated. "
+                "Nothing else on this page can be scored until it is there."
+            ),
+        )
 
     if not role_keywords:
         return RuleResult(
@@ -402,7 +497,7 @@ def rule_keywords(
             earned=15.0, status="pass",
             detail=(
                 f"{len(found)} skills detected. Role-specific keyword scoring "
-                "is unavailable because no trained role model is loaded."
+                "did not run, so this rule is not counted against the resume."
             ),
         )
 
@@ -535,8 +630,7 @@ def rule_tone(text: str, **_) -> RuleResult:
 
 
 def rule_dates(text: str, **_) -> RuleResult:
-    counts = {name: len(pattern.findall(text)) for name, pattern in _DATE_FORMS.items()}
-    used = {name: count for name, count in counts.items() if count}
+    used = count_date_forms(text)
 
     if not used:
         return RuleResult(

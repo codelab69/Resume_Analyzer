@@ -112,6 +112,141 @@ class TestLayoutRule:
         assert ats.rule_layout(doc).earned == 15
 
 
+class TestDateConsistencyRule:
+    """Rule 10 scored the format its own advice recommends at zero.
+
+    Three separate faults compounded. `[A-Za-z]{3,9}` before a year accepted
+    any word, so "Acme 2023" was a month-and-year date. `year_only` matched the
+    year *inside* a month-and-year match, so "Jun 2023" registered as two
+    formats at once. And the numeric pattern matched "7/10" inside a CGPA.
+
+    The result: a resume using nothing but "Jun 2023 - Aug 2024" was told it
+    used two date formats and scored 0 of 5, while the fix text underneath
+    recommended that exact format.
+    """
+
+    @staticmethod
+    def _earned(text):
+        return ats.rule_dates(text=text).earned
+
+    def test_the_recommended_format_scores_full_marks(self):
+        # The format rule_dates' own fix text calls the safest.
+        assert self._earned("Intern, Acme\nJun 2023 - Aug 2024\n") == 5.0
+        assert self._earned("Jun 2023 - Aug 2024\nSep 2024 - Dec 2024\n") == 5.0
+
+    def test_each_consistent_format_scores_full_marks(self):
+        for text in [
+            "Acme 2021 - 2022\nBeta 2023 - 2024\n",
+            "06/2023 - 08/2024\n01/2021 - 12/2022\n",
+        ]:
+            assert self._earned(text) == 5.0, text
+
+    def test_a_genuinely_mixed_resume_is_still_penalised(self):
+        assert self._earned("Jun 2023 - Aug 2024\n06/2021 - 12/2022\n") < 5.0
+
+    def test_a_year_is_counted_once_not_twice(self):
+        # "Jun 2023" is one date, not a month-and-year date plus a bare year.
+        assert ats.count_date_forms("Jun 2023 - Aug 2024") == {"month_year": 2}
+
+    def test_a_word_before_a_year_is_not_a_month(self):
+        assert ats.count_date_forms("Acme 2021 - 2022") == {"year_only": 2}
+
+    def test_a_cgpa_is_not_a_date(self):
+        # "CGPA: 8.7/10" contains "7/10", which the old numeric pattern read
+        # as a month and a two-digit year.
+        assert ats.count_date_forms("CGPA: 8.7/10") == {}
+        assert ats.count_date_forms("CGPA: 8.7/10 and Jun 2023") == {"month_year": 1}
+
+    def test_an_impossible_month_is_not_a_numeric_date(self):
+        assert ats.count_date_forms("13/2023") == {}
+        assert ats.count_date_forms("12/2023") == {"numeric": 1}
+
+
+class TestQuantifiedRule:
+    r"""Rule 6 counted a bare year as a measurable figure.
+
+    `[\d,]{2,}` matches any run of two or more digits, so every bullet
+    mentioning a year - "Built a website in 2024", "Won the 2022 hackathon" -
+    was scored as quantified. Rule 6 is worth 15 points and its advice tells
+    the student how many bullets contain a number; both were wrong on any
+    resume that dates its work inside the bullet.
+    """
+
+    @staticmethod
+    def _is_quantified(bullet):
+        return bool(ats._QUANTIFIED.search(bullet))
+
+    def test_a_bare_year_is_not_an_achievement(self):
+        for bullet in [
+            "Built a website in 2024",
+            "Won the 2022 hackathon",
+            "Attended a workshop in 1999",
+        ]:
+            assert not self._is_quantified(bullet), bullet
+
+    def test_real_figures_still_count(self):
+        for bullet in [
+            "Reduced load time by 40%",
+            "Handled 1,200 records",
+            "Built 14 REST API endpoints",
+            "Saved the team 6 hours a week",
+            "Raised coverage from 41% to 88%",
+        ]:
+            assert self._is_quantified(bullet), bullet
+
+    def test_a_year_attached_to_a_unit_is_still_a_measurement(self):
+        # The unit branch runs before the bare-number branch, so a number that
+        # happens to look like a year is kept when it is counting something.
+        assert self._is_quantified("Served 2000 users in the first month")
+
+
+class TestKeywordRuleWithNothingToScore:
+    """Rule 7 gave 15 of 15 to a resume with no skills, and blamed the model.
+
+    An empty `role_keywords` has two very different causes: the classifier
+    could not run, or it ran and predicted nothing because the resume shows no
+    skill any role asks for. Both took the "award full points, a missing
+    component must not look like a failing resume" branch, so the weakest
+    possible resume collected the rule's entire 15 points and was told the
+    reason was a missing trained model.
+    """
+
+    def test_no_skills_scores_zero_not_fifteen(self):
+        result = ats.rule_keywords(skill_hits=[], role_keywords=None)
+        assert result.earned == 0.0
+        assert result.status == "fail"
+        assert "no trained role model" not in result.detail
+        assert "SKILLS" in result.fix
+
+    def test_an_unavailable_classifier_still_costs_the_resume_nothing(self):
+        hit = skills.find_skills("Python and Docker")[0]
+        result = ats.rule_keywords(skill_hits=[hit], role_keywords=None)
+        assert result.earned == 15.0
+        assert result.status == "pass"
+
+    def test_end_to_end_a_resume_with_no_skills_loses_the_rule(self):
+        resume = (
+            "Rahul Kumar\n\nOBJECTIVE\nSeeking a role.\n\n"
+            "EDUCATION\nBachelor of Commerce, 2026\n\n"
+            "EXPERIENCE\n- Helped with office work\n"
+        )
+        analysis = pipeline.analyse(resume.encode("utf-8"), "noskills.txt")
+        rule = next(r for r in analysis.ats_report.rules if r.id == "keywords")
+        assert rule.earned == 0.0
+
+
+class TestToneRule:
+    def test_i_e_is_not_a_first_person_pronoun(self):
+        # `\bi\b` under re.I matches the "i" in "i.e." and in "i/o", so a
+        # resume mentioning either was docked a point for writing about itself.
+        assert ats._FIRST_PERSON.findall("Built an ETL pipeline, i.e. batch") == []
+        assert ats._FIRST_PERSON.findall("Reduced i/o wait on the disk") == []
+
+    def test_a_real_pronoun_still_costs_a_point(self):
+        assert ats.rule_tone(text="I led a team of four.").earned == 4.0
+        assert ats.rule_tone(text="Led a team of four.").earned == 5.0
+
+
 class TestAtsBehaviour:
     def test_a_good_resume_outscores_a_bad_one(self, strong, weak):
         assert strong.ats_report.score > weak.ats_report.score + 25
