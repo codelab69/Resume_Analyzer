@@ -877,6 +877,234 @@ class TestSkills:
     def test_returns_nothing_for_empty_input(self):
         assert skills.find_skills("") == []
 
+    def test_a_capital_that_english_supplied_is_not_evidence(self):
+        # The two sentences above are lowercase, which is the easy half of the
+        # problem - the guard is not needed there. These are the same words
+        # opening a sentence, where English capitalises them regardless. They
+        # are the exact examples the module docstring lists as handled, and
+        # every one of them was found as a skill until S4.5a.
+        for sentence, wrong in [
+            ("Go to the portal and register.", "Go"),
+            ("Swift delivery of the project.", "Swift"),
+            ("Excel at communication and teamwork.", "Excel"),
+            ("Rust never sleeps, and neither did we.", "Rust"),
+        ]:
+            found = {hit.name for hit in skills.find_skills(sentence)}
+            assert wrong not in found, sentence
+
+    def test_a_single_letter_needs_more_than_a_capital(self):
+        # "C" and "R" are capitals in both readings, always, so casing can
+        # never be evidence for them - only a list or a neighbouring skill.
+        for sentence in [
+            "He got a C grade in maths.",
+            "Ranked C in the aptitude round",
+            "Section R of the campus block",
+        ]:
+            found = {hit.name for hit in skills.find_skills(sentence)}
+            assert not ({"C", "R"} & found), sentence
+
+    def test_an_unambiguous_neighbour_vouches_for_a_single_letter(self):
+        # One conjunction may sit between them, which is how a two-item list
+        # gets written as prose.
+        for sentence in ["Proficient in C and Python", "Wrote R with Pandas"]:
+            found = {hit.name for hit in skills.find_skills(sentence)}
+            assert found & {"C", "R"}, sentence
+
+    def test_the_neighbour_walk_stops_at_a_full_stop(self):
+        # Found by measurement, not by a test: this is a false positive the
+        # neighbour rule itself introduced. "Teamwork" is a real skill sitting
+        # immediately to the left of "Go", one sentence away, and it vouched
+        # for it. Two skills in different sentences are not a list.
+        #
+        # The full stop is easy to miss because the tokeniser keeps it:
+        # "teamwork." is one token, so the punctuation is inside the neighbour
+        # rather than in the gap between them.
+        text = "Excel at communication and teamwork. Go to my portfolio."
+        found = {hit.name for hit in skills.find_skills(text)}
+        assert found == {"Communication", "Teamwork"}
+
+    def test_two_english_words_cannot_vouch_for_each_other(self):
+        # The neighbour has to be a skill that needs no guard of its own,
+        # or the rule launders one false positive into two.
+        found = {hit.name for hit in skills.find_skills("Ask me to go or excel.")}
+        assert not ({"Go", "Excel"} & found)
+
+    def test_a_colon_opens_a_list(self):
+        # "Languages: C, C++" is the commonest shape of a skills line, and its
+        # first entry has no delimiter to its left except that colon.
+        found = {hit.name for hit in skills.find_skills("Languages: C, C++, Java")}
+        assert {"C", "C++", "Java"} <= found
+
+    def test_ambiguous_skills_survive_a_bullet_list(self):
+        found = {hit.name for hit in skills.find_skills("\u2022 Go\n\u2022 Rust\n")}
+        assert {"Go", "Rust"} <= found
+
+    def test_highlight_span_excludes_sentence_punctuation(self):
+        # The span is what the frontend highlights. A trailing full stop is
+        # sentence punctuation, not part of the skill - but the dots inside
+        # ".NET" and "Node.js" are.
+        text = "Strong communication skills. Built with Node.js. Uses .NET too."
+        spans = {h.name: text[h.start : h.end] for h in skills.find_skills(text)}
+        assert spans["Communication"] == "communication skills"
+        assert spans["Node.js"] == "Node.js"
+        assert spans[".NET"] == ".NET"
+
+
+class TestSkillFuzzyScope:
+    """The fuzzy pass takes a span, and a span cannot disagree with itself.
+
+    Every test here failed before S4.5b, silently. The hits were right and the
+    offsets were not, because nothing in the suite had ever looked at the
+    offsets of a fuzzy hit.
+    """
+
+    BLANK_LINE = (
+        "Kiran Anandan\n\nSKILLS\n\nPython, Javascrpt\n\n"
+        "Docker, Kubernets\n\nEXPERIENCE\n\nBuilt things.\n"
+    )
+    TWICE = (
+        "SKILLS\nPython, Docker\n\nEXPERIENCE\nBuilt things.\n\n"
+        "TECHNICAL SKILLS\nJavascrpt, Kubernets\n"
+    )
+
+    @staticmethod
+    def _hits(text):
+        return skills.find_skills(text, fuzzy_spans=segment.segment(text).spans("SKILLS"))
+
+    def test_offsets_are_right_when_the_section_holds_a_blank_line(self):
+        hits = self._hits(self.BLANK_LINE)
+        assert {h.name for h in hits if h.method == "fuzzy"} == {
+            "JavaScript",
+            "Kubernetes",
+        }
+        for hit in hits:
+            assert self.BLANK_LINE[hit.start : hit.end] == hit.surface, hit
+
+    def test_offsets_are_right_when_the_section_appears_twice(self):
+        # `get("SKILLS")` joins the two bodies with a newline, producing a
+        # string that exists nowhere in the document - which is why searching
+        # for it returned -1 and the offset fell back to 0. `spans` returns two.
+        assert len(segment.segment(self.TWICE).spans("SKILLS")) == 2
+        hits = self._hits(self.TWICE)
+        assert {h.name for h in hits if h.method == "fuzzy"} == {
+            "JavaScript",
+            "Kubernetes",
+        }
+        for hit in hits:
+            assert self.TWICE[hit.start : hit.end] == hit.surface, hit
+
+    def test_no_two_hits_claim_the_same_characters(self):
+        ordered = sorted(self._hits(self.BLANK_LINE), key=lambda h: h.start)
+        for earlier, later in zip(ordered, ordered[1:]):
+            assert earlier.end <= later.start, (earlier, later)
+
+    def test_without_a_span_there_is_no_fuzzy_pass(self):
+        text = "Javascrpt and Kubernets"
+        assert skills.find_skills(text, fuzzy_spans=[]) == []
+        assert skills.find_skills(text) == []
+
+    def test_a_fuzzy_hit_never_lands_inside_an_exact_one(self):
+        # "Structured Query Language" is one exact hit for SQL. Its middle
+        # token, "Query", is a 91% token_set_ratio match for the "jquery" key,
+        # so without the overlap guard the report gains a jQuery the candidate
+        # never claimed, highlighted on characters another hit already owns.
+        text = "SKILLS\nStructured Query Language, Python, Docker\n"
+        hits = self._hits(text)
+        assert [h.name for h in hits] == ["SQL", "Python", "Docker"]
+        assert "jQuery" not in {h.name for h in hits}
+
+    def test_the_pipeline_hands_over_spans_not_a_searched_offset(self):
+        # The unit tests above call find_skills directly, so they hold the
+        # matcher but not the caller. This one goes through analyse(), which
+        # is where the offset used to be re-derived by searching the document
+        # for a rebuilt string that is not in it.
+        resume = (
+            "Kiran Anandan\nkiran@example.com\n\n"
+            "SKILLS\n\nPython, Javascrpt\n\nDocker, Kubernets\n\n"
+            "EXPERIENCE\n\nBackend Intern, Northwind Systems\n"
+            "Jun 2024 - Aug 2024\n- Built services.\n"
+        )
+        analysis = pipeline.analyse(resume.encode("utf-8"), "spans.txt")
+        fuzzy = [h for h in analysis.skill_hits if h.method == "fuzzy"]
+        assert {h.name for h in fuzzy} == {"JavaScript", "Kubernetes"}
+        for hit in analysis.skill_hits:
+            assert analysis.text[hit.start : hit.end] == hit.surface, hit
+
+
+class TestDoctests:
+    """Every `>>>` example in `app/core` is executed by the suite.
+
+    None of them were. pytest runs doctests only when asked with
+    `--doctest-modules`, there is no pytest config in this project, and nothing
+    asked - so four examples sat in the source reading like proof for months.
+    One was wrong: `normalise` promised `'node.js react-native'` against an
+    actual `'node.js react native'`, while the prose two lines underneath it
+    said the hyphen is a separator. The docstring disagreed with itself and
+    with the code, and both halves looked authoritative.
+
+    An example is a claim. An unexecuted example is a claim nobody checked,
+    which is the same defect as S4.3b and S4.4c in a different costume.
+    """
+
+    CORE = pathlib.Path(__file__).resolve().parents[1] / "app" / "core"
+
+    def _modules(self):
+        import importlib
+
+        for path in sorted(self.CORE.glob("*.py")):
+            if path.stem != "__init__":
+                yield importlib.import_module(f"app.core.{path.stem}")
+
+    def test_every_docstring_example_runs_and_passes(self):
+        import doctest
+
+        failed = []
+        for module in self._modules():
+            result = doctest.testmod(module, verbose=False, report=False)
+            if result.failed:
+                failed.append(f"{module.__name__}: {result.failed} failed")
+        assert not failed, failed
+
+    def test_the_run_covered_every_example_in_the_source(self):
+        # A green run above means nothing if it ran nothing. Count the `>>>`
+        # lines in the source and require the doctest run to have attempted
+        # exactly that many, so an example added inside a module the loop
+        # cannot import fails here rather than passing silently.
+        import doctest
+
+        written = sum(
+            path.read_text(encoding="utf-8").count(">>> ")
+            for path in self.CORE.glob("*.py")
+        )
+        attempted = sum(
+            doctest.testmod(module, verbose=False, report=False).attempted
+            for module in self._modules()
+        )
+        assert written > 0
+        assert attempted == written
+
+
+class TestSectionSpans:
+    def test_a_span_slices_the_original_document(self):
+        text = "SKILLS\n\n  Python, SQL  \n\nEDUCATION\nB.E. 2026\n"
+        segmented = segment.segment(text)
+        (start, end), = segmented.spans("SKILLS")
+        assert text[start:end] == "Python, SQL"
+
+    def test_the_rebuilt_text_is_not_a_substring_but_the_span_still_is(self):
+        # This is the whole reason spans exist. `get()` returns stripped lines
+        # joined by newlines; the document has blank lines between them, so the
+        # rebuild appears nowhere in it.
+        text = "SKILLS\nPython\n\nDocker\nEXPERIENCE\nBuilt things.\n"
+        segmented = segment.segment(text)
+        assert text.find(segmented.get("SKILLS")) == -1
+        (start, end), = segmented.spans("SKILLS")
+        assert text[start:end] == "Python\n\nDocker"
+
+    def test_an_empty_section_has_no_span(self):
+        text = "SKILLS\nEDUCATION\nB.E. 2026\n"
+        assert segment.segment(text).spans("SKILLS") == []
+
 
 # ---------------------------------------------------------------------------
 # embed

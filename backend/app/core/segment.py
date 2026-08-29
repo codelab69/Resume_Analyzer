@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
-from app.core.text_utils import lines, normalise
+from app.core.text_utils import lines_with_offsets, normalise
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 HEADINGS_FILE = DATA_DIR / "headings.json"
@@ -74,6 +74,14 @@ class Section:
     text: str            # everything under it, excluding the heading
     start_line: int      # index into the line list, for debugging
     end_line: int
+    # Where the body sits in the ORIGINAL document. `text` is a rebuild -
+    # stripped lines, blank lines dropped - so it is generally NOT a substring
+    # of the document and cannot be located afterwards by searching for it.
+    # Anything that needs to point back at the source (highlight offsets) must
+    # use this span. Defaults keep the older four-argument constructor working
+    # for tests that build a Section by hand.
+    start_char: int = 0
+    end_char: int = 0
 
     @property
     def is_empty(self) -> bool:
@@ -102,6 +110,20 @@ class SegmentedResume:
 
     def has(self, name: str) -> bool:
         return any(s.name == name and not s.is_empty for s in self.sections)
+
+    def spans(self, name: str) -> list[tuple[int, int]]:
+        """Character spans of every non-empty section with this name.
+
+        The positional twin of `get()`. A section can appear twice, and `get()`
+        joins the two bodies with a newline - a string that exists nowhere in
+        the document. Callers that need positions take them from here instead
+        of searching for the joined text, which silently finds nothing.
+        """
+        return [
+            (s.start_char, s.end_char)
+            for s in self.sections
+            if s.name == name and not s.is_empty
+        ]
 
     @property
     def names(self) -> list[str]:
@@ -318,7 +340,8 @@ def segment(text: str) -> SegmentedResume:
         >>> r.get("SKILLS")
         'Python, SQL'
     """
-    all_lines = lines(text)
+    measured = lines_with_offsets(text)
+    all_lines = [line for line, _start, _end in measured]
     result = SegmentedResume()
 
     # Pass 1: find every heading and where it sits.
@@ -358,7 +381,7 @@ def segment(text: str) -> SegmentedResume:
         # downstream code still has something to read instead of crashing.
         result.preamble = text
         result.sections = [
-            Section("BODY", "", text, 0, len(all_lines))
+            Section("BODY", "", text, 0, len(all_lines), 0, len(text))
         ]
         return result
 
@@ -369,6 +392,15 @@ def segment(text: str) -> SegmentedResume:
     for position, (index, name, heading) in enumerate(marks):
         end = marks[position + 1][0] if position + 1 < len(marks) else len(all_lines)
         body = "\n".join(all_lines[index + 1 : end]).strip()
-        result.sections.append(Section(name, heading, body, index, end))
+        # The span runs from the start of the first body line to the end of the
+        # last one, so it covers the original spacing that `body` dropped.
+        if index + 1 < end:
+            start_char = measured[index + 1][1]
+            end_char = measured[end - 1][2]
+        else:
+            start_char = end_char = measured[index][2]
+        result.sections.append(
+            Section(name, heading, body, index, end, start_char, end_char)
+        )
 
     return result

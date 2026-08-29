@@ -152,9 +152,15 @@ Two passes: an exact longest-match-wins phrase index over the whole document, th
 fuzzy pass scoped to the SKILLS section only, to recover typos like "Javascrpt".
 
 The pipeline does one fiddly thing here worth understanding. The fuzzy pass runs against
-a *substring* of the document, so its offsets would be relative to that substring. The
-pipeline finds where the SKILLS text sits in the full document and passes that offset in,
-so every returned hit carries an absolute character offset.
+a *slice* of the document, so its offsets would be relative to that slice. The pipeline
+passes the SKILLS section's **character span**, taken from `segmented.spans("SKILLS")`,
+and the matcher slices the document with it — so the text scanned and the offset reported
+are the same measurement and cannot disagree.
+
+It used to pass the section's *text* plus an offset recovered by searching the document
+for that text. Section text is a rebuild with blank lines dropped, so the search failed on
+any resume whose SKILLS block held a blank line or appeared twice, the offset silently
+became 0, and every fuzzy highlight pointed at the top of the page. See S4.5b.
 
 > [!info] Why the offsets matter so much
 > The frontend highlights skills by slicing the returned text with `start` and `end`.

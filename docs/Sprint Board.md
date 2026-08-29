@@ -61,11 +61,11 @@ Everything ticked above was green at the same moment, on 2026-08-29:
 
 | Check | Result | Measured |
 |---|---|---|
-| `pytest` | **233 passed** in 2.2 s (120 at the start of Sprint 1, 211 before S4.4) | 2026-08-29 |
-| `scripts/smoke_test.py` | passed, TOTAL 204 ms | 2026-08-29 |
+| `pytest` | **252 passed** in 2.4 s (120 at the start of Sprint 1, 233 before S4.5) | 2026-08-29 |
+| `scripts/smoke_test.py` | passed, TOTAL 201 ms | 2026-08-29 |
 | `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed, on the transformer backend** | 2026-08-29 |
 | `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, notes empty | 2026-08-29 |
-| `npm run build` | clean, no warnings, 1052 modules, largest chunk `charts` 368 kB, 4.0 s | 2026-08-29 |
+| `npm run build` | clean, no warnings, 1052 modules, largest chunk `charts` 368 kB, 3.5 s | 2026-08-29 |
 | All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 29/29 | 2026-08-27, not re-run since |
 | Vault link integrity | 237 links checked: 153 resolve, 84 point at notes still on this board, **0 broken**. One genuinely broken anchor was found and fixed — `[[Data Model#3. Deletion actually deletes]]` had been written without the section number, which Obsidian does not match | 2026-08-27, not re-run since |
 
@@ -81,10 +81,10 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Ten defects have been found by verifying rather than by looking
-> S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a, S4.4b and S4.4c were all found by
-> *running* the thing being documented instead of trusting an existing comment or a
-> remembered number. None of them would have been caught by reading the code. Five were
+> [!note] Thirteen defects have been found by verifying rather than by looking
+> S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a, S4.4b, S4.4c, S4.5a, S4.5b and
+> S4.5c were all found by *running* the thing being documented instead of trusting an
+> existing comment or a remembered number. None of them would have been caught by reading the code. Eight were
 > invisible to a green test suite, and one — S4.2a — was invisible *because* the code read
 > like a correct implementation: clear docstring, named constants, a comment marking the
 > important line, all of it describing an intention rather than the behaviour. That is the
@@ -102,10 +102,14 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > | S4.4a — a documented date format parsed to nothing, and every closed range lost a month | typing the three formats the comment named into the function | No — the comment listed three examples and looked like proof |
 > | S4.4b — four fields matched a string that was not the field | running each pattern against its negative control | Unlikely — `m\.?\s?e\.?` under `re.I` reads as correct until you notice it spells **me** |
 > | S4.4c — the vault stated an end-to-end count that was never true | running the verification bar instead of copying the last evidence line | Only by counting; eleven places agreed with each other |
+> | S4.5a — the ambiguity guard accepted every example it was written to reject | running the docstring's own three sentences through it | No - `surface == canonical` reads as exactly right until you remember English capitalises sentences |
+> | S4.5b — every fuzzy highlight pointed at the wrong characters | asserting a span slices back to its own surface | No - and the end-to-end check that asserts this was green, on the one fixture that cannot fail it |
+> | S4.5c — four documented examples had never been executed | running the doctests to check a claim | No - an unrun example looks identical to a passing one |
 >
-> S4.3b and S4.4c are the same defect twice, four stories apart, which is the whole
-> argument: the remedy for a number written from memory is not resolving to remember
-> harder, it is a test that fails. Both now have one.
+> S4.3b, S4.4c and S4.5c are one defect three times, in three costumes: a count in the
+> README, a count in eleven vault files, four examples in docstrings. Prose that sits next
+> to code and is never run. The remedy has never once been "check more carefully" - it has
+> been a test, three times, and all three now exist.
 
 ---
 
@@ -689,7 +693,119 @@ file that owns the behaviour, and every wikilink in it resolves or is itself on 
   returns only the docstring that explains the defect.*
 
 
-- [ ] **S4.5 — [[Skill Matching]]** — longest-match-wins n-gram indexing and the ambiguity problem
+- [x] **S4.5 — [[Skill Matching]]** — longest-match-wins n-gram indexing and the ambiguity problem
+  *Evidence 2026-08-29: every count in the note read out of the loaded index rather than
+  from the source file (169 skills, 436 keys, 267 aliases, key widths 231/177/28, window
+  ceiling 3), every timing measured over 20 runs, and both rejected alternatives rejected on
+  numbers produced here rather than on argument. Five rejected alternatives, a "what this
+  gives up, deliberately" section listing three accepted misses by name, and a worked
+  downstream cost showing what one false positive does to a match score. Writing it found
+  S4.5a, S4.5b and S4.5c. `pytest` **252 passed** (233 before), 19 new tests.*
+
+- [x] **S4.5a — Defect: the ambiguity guard accepted every example it was written to reject** *(unplanned)*
+  Found by running the three sentences in the module docstring through the function that
+  docstring points at.
+  **Cause:** the guard's first clause was `if surface == canonical: return True` — "Go" is a
+  skill, "go" is English. English capitalises the first word of every sentence, so the clause
+  fires on exactly the strings it exists to reject. `Go to the portal`, `Swift delivery of
+  the project` and `Excel at communication` were all reported as skills, and so was the `C`
+  in `He got a C grade` — single letters are capitals in both readings, always.
+  The suite was green because `test_ignores_ambiguous_words_used_as_english` asserts on
+  **lowercase** "go" and "swift", which is the half of the problem the guard is not needed
+  for. The test chose the case that passes without the code under test.
+  **Fix:** three clauses instead of two. A delimited list is enough on its own, casing not
+  required. Casing plus an unambiguous skill beside it, allowing one conjunction, covers
+  "C and Python". Casing alone counts only where the capital carries information — the name
+  is longer than one character and the match does not open a sentence. The colon joined the
+  delimiter set, because `Languages: C, C++` is the commonest shape of a skills line.
+  **The neighbour rule then introduced a false positive of its own**, found by running a
+  scored match rather than by a test: `...and teamwork. Go to my portfolio` put `Teamwork`,
+  a real skill, immediately left of `Go` and vouched for it across a full stop. The walk now
+  stops at a sentence boundary — which is not a one-liner, because `_TOKEN` keeps dots so
+  that `Node.js` survives, meaning `teamwork.` is one token with the punctuation *inside* it
+  and the gap between the tokens is a bare space. `_content_end` walks it back out.
+  **AC:** every example the docstring names is rejected, a skills line in any of its four
+  ordinary shapes still parses, and the accepted misses are written down rather than found
+  later.
+  *Evidence 2026-08-29, run on both versions: the four sentences above **all matched → none
+  match**. Still matched: `Languages: Python, Go, Rust, Java`, `Skills: C, C++, Java`,
+  `Built services in Go at scale`, `Proficient in C and Python`, a bullet list, and
+  `Used Apache Spark and Excel`. Downstream, a resume whose only mentions are those false
+  positives against a JD asking for Excel, SQL and Go: skills reported
+  **Excel, Go, C → none**, skill sub-score **0.500 → 0.000**, critical gaps shown
+  **1 → 3**. The same fix moved a number the other way: the JD's own "...SQL and Go." had
+  been losing `Go`, because the trailing full stop was part of the surface.*
+
+- [x] **S4.5b — Defect: every fuzzy highlight pointed at the wrong characters** *(unplanned)*
+  Found by asserting that a hit's offsets slice back to its own surface form — the thing the
+  end-to-end check already claims to verify.
+  **Cause:** the fuzzy pass runs on one section but reports positions in the whole document,
+  and the pipeline recovered the section's position with
+  `document.text.find(segmented.get("SKILLS"))`. `Section.text` is a **rebuild** — stripped
+  lines, blank lines dropped — so it is generally not a substring of the document. `find`
+  returned `-1`, `max(0, -1)` made it `0`, and every fuzzy hit was measured from the top of
+  the page. Two ordinary resume shapes trigger it: a blank line inside SKILLS, and a resume
+  with both `SKILLS` and `TECHNICAL SKILLS` — the second being a case `get()` explicitly
+  supports, joining both bodies with a newline that exists nowhere in the document.
+  **A correct check for this already existed and was green.** `e2e_check.py` asserts
+  `text[start:end] == surface` for every span. It runs on `sample_resume.txt`, whose SKILLS
+  block is contiguous and correctly spelt, so it produces **zero fuzzy hits** — the
+  assertion only ever saw exact-pass spans, which were never wrong. Coverage of a line is
+  not coverage of a case.
+  **Fix:** stop re-deriving a fact already known. `Section` carries `start_char`/`end_char`,
+  `SegmentedResume.spans(name)` returns them, and `find_skills` takes spans instead of a
+  string plus a promise about where it came from — it slices the document itself, so the
+  text scanned and the offset reported are one measurement, the argument of
+  [[Decision Log#D6 — Reading order is recovered from word geometry, not taken from the library]].
+  `lines_with_offsets` now produces both the line and its position, and `lines()` is derived
+  from it, so those two cannot diverge either. Scoping properly exposed a second problem:
+  `Structured Query Language` is one exact hit for SQL whose middle token is a 91% match for
+  the `jquery` key, so the fuzzy pass invented a jQuery on characters another hit owned. It
+  now skips any candidate overlapping an existing span.
+  **AC:** every returned span slices back to its own surface on a resume that produces fuzzy
+  hits, including when the section holds a blank line or appears twice, and no two hits claim
+  the same characters.
+  *Evidence 2026-08-29, run on both versions: blank line inside SKILLS — `Javascrpt`
+  highlighted **`andan\n\nSK` → `Javascrpt`**; two SKILLS sections — `Javascrpt` highlighted
+  **`Docker\n\nE` → `Javascrpt`**, `Kubernets` **`ERIENCE\nB` → `Kubernets`**. Fuzzy over the
+  whole document instead of the section: **25 hits (0 fuzzy) → 26 (1 fuzzy)**, and the one
+  extra is jQuery, read out of "Reduced average query time from 480ms to 95ms". Also fixed
+  here: the highlight span kept sentence punctuation, so `communication skills.` was
+  highlighted with the full stop.*
+
+  > [!note] Two of the eight mutations broke nothing on the first run
+  > The offset fix and the overlap guard were held only by unit tests that call
+  > `find_skills` directly with correct spans — the one arrangement in which neither bug can
+  > occur. They needed a test that goes through `pipeline.analyse`, and a fixture built from
+  > the `Structured Query Language` / `jquery` collision, which was found by scanning the
+  > ontology for a multi-word skill whose component token fuzzy-matches a different one
+  > rather than by guessing at an example. Both mutations now fail exactly one named test.
+
+- [x] **S4.5c — Defect: four documented examples had never been executed** *(unplanned)*
+  Found by running the doctests to check a claim in `find_skills`, and discovering the suite
+  had never run any of them.
+  **Cause:** pytest collects doctests only when asked with `--doctest-modules`. This project
+  has no pytest configuration file at all, and nothing asked. Four `>>>` examples in
+  `app/core` had sat unexecuted since they were written. One was wrong:
+  `normalise("Node.JS / React-Native!")` promised `'node.js react-native'` against an actual
+  `'node.js react native'` — while the prose two lines below it in the same docstring says
+  the hyphen is a separator. The docstring disagreed with itself *and* the code, and both
+  halves read as authoritative.
+  **Fix:** the example corrected, and `TestDoctests` added — it executes every doctest in
+  `app/core`, and separately counts the `>>>` lines in the source and requires the run to
+  have attempted exactly that many, so an example added inside a module the loop cannot
+  import fails loudly instead of passing by omission.
+  **AC:** a wrong example, or an unreachable one, is a red test.
+  *Evidence 2026-08-29: `pytest --doctest-modules app/core` before the fix — **1 failed, 2
+  passed**; after — **4 examples, all passing**. Mutation: restoring the wrong expected
+  output fails exactly `test_every_docstring_example_runs_and_passes`.*
+
+  > [!important] This is the third time, and the remedy is the same every time
+  > S4.3b was a count in the README nobody re-counted. S4.4c was a count in eleven vault
+  > files nobody re-ran. S4.5c is four examples nobody executed. The pattern is not
+  > carelessness about numbers, it is **prose that sits next to code and is never run**.
+  > The remedy has never once been "check more carefully"; it has been a test, three times.
+
 - [ ] **S4.6 — [[Role Classification]]** — the supervised model and the profile fallback
 - [ ] **S4.7 — [[ATS Scoring]]** — the ten rules, their weights, and why they add to 100
 - [ ] **S4.8 — [[Job Matching]]** — the four signals and the weighted formula

@@ -153,8 +153,13 @@ read as "Node".
 
 **The ambiguity problem** is the part worth explaining. "C", "R", "Go" and "Swift" are
 skills and also ordinary English — matched naively they fire on "go to", "a C grade",
-"swift delivery". Ambiguous keys are held to a stricter test: the casing must match the
-canonical form exactly, or the match must sit between list delimiters.
+"swift delivery". Ambiguous keys are held to a stricter test: the match sits in a delimited
+list, or its casing matches the canonical form **and** that capital carries information —
+it is not the first word of a sentence, where English capitalises everything anyway, and
+the name is longer than one character, because "C" and "R" are capitals in both readings.
+An unambiguous skill immediately beside it also vouches for it, as in "C and Python",
+provided the walk does not cross a full stop. Casing alone was the whole rule until S4.5a,
+and it accepted every example in the sentence above.
 
 That trades a little recall for a lot of precision, which is the right way round. A
 wrong skill on the report is a visible bug to the student; a missed one is not.

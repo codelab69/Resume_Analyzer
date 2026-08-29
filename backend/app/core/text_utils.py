@@ -68,7 +68,7 @@ def normalise(text: str) -> str:
     "Node.js" would become "node js" which is also a listed alias anyway.
 
         >>> normalise("Node.JS / React-Native!")
-        'node.js react-native'
+        'node.js react native'
 
     Note the hyphen is NOT preserved - it is treated as a separator, so
     "react-native" normalises to "react native". Aliases in skills.json are
@@ -112,9 +112,37 @@ def content_tokens(text: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def lines_with_offsets(text: str) -> list[tuple[str, int, int]]:
+    r"""Non-empty stripped lines, each with its span in the ORIGINAL text.
+
+    Returns `(line, start, end)` with `text[start:end] == line`. The spans are
+    what any caller needs in order to point back at the source - highlight
+    offsets, for one - and they cannot be recovered afterwards by searching for
+    the line, because stripping and dropping blanks means the rebuilt text is
+    not a substring of the original.
+
+        >>> t = "  Kiran  \n\nPython, Go\n"
+        >>> [(ln, t[a:b]) for ln, a, b in lines_with_offsets(t)]
+        [('Kiran', 'Kiran'), ('Python, Go', 'Python, Go')]
+    """
+    out: list[tuple[str, int, int]] = []
+    cursor = 0
+    for raw in text.split("\n"):
+        stripped = raw.strip()
+        if stripped:
+            start = cursor + (len(raw) - len(raw.lstrip()))
+            out.append((stripped, start, start + len(stripped)))
+        cursor += len(raw) + 1        # +1 for the newline that split() removed
+    return out
+
+
 def lines(text: str) -> list[str]:
-    """Non-empty lines, each stripped. Blank lines are dropped entirely."""
-    return [ln.strip() for ln in text.split("\n") if ln.strip()]
+    """Non-empty lines, each stripped. Blank lines are dropped entirely.
+
+    Derived from `lines_with_offsets` rather than written a second time, so a
+    line and its recorded position can never come from two different rules.
+    """
+    return [line for line, _start, _end in lines_with_offsets(text)]
 
 
 def is_bullet(line: str) -> bool:

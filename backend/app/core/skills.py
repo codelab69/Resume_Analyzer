@@ -31,6 +31,12 @@ English-word skills are therefore held to a stricter test - see
 `_ambiguous_match_is_credible()`. This trades a little recall for a lot of
 precision, which is the right way round: a wrong skill on the report is a
 visible bug to the user, a missed one is not.
+
+The test cannot be "is it capitalised". English capitalises the first word
+of every sentence, so "Go to the portal", "Swift delivery" and "Excel at
+communication" all present a capital that means nothing - and "C" and "R" are
+capitals in both readings, always. Capitalisation is evidence only where
+English would not have supplied it anyway.
 """
 
 from __future__ import annotations
@@ -59,7 +65,20 @@ MAX_PHRASE_TOKENS = 5
 _TOKEN = re.compile(r"[A-Za-z0-9+#.]+")
 
 # Characters that mark a list boundary. Used to validate ambiguous matches.
-_LIST_DELIMITERS = set(",;|/()[]{}•*\n\t")
+# The colon is in here because "Languages: C, C++" is the commonest way a
+# skills line starts, and without it the first entry has no delimiter to its
+# left. A full stop is NOT a list delimiter - see `_starts_a_sentence`.
+_LIST_DELIMITERS = set(",;:|/()[]{}•*\n\t")
+
+# Words that join two skills written as prose rather than as a list. One of
+# these may sit between an ambiguous match and the neighbour that vouches for
+# it, so "C and Python" counts while "Excel at communication" does not.
+_CONJUNCTIONS = {"and", "or", "&", "+", "with"}
+
+# Characters that end a sentence, and a line break, which ends one in a resume
+# whether or not it is punctuated. The neighbour walk below must not cross one:
+# two skills in different sentences are not a list.
+_SENTENCE_END = set(".!?\n\r")
 
 # Skills whose surface form is also ordinary English, or ordinary resume
 # vocabulary. These need the stricter credibility test in
@@ -188,27 +207,122 @@ def _is_ambiguous(key: str) -> bool:
     return len(key) == 1 or key in _AMBIGUOUS_NAMES
 
 
+def _starts_a_sentence(text: str, start: int) -> bool:
+    """True when this match is the first word of a sentence, or of the text.
+
+    A capital in that position is English grammar. It says nothing about
+    whether the word is a skill, so the casing test below must not count it.
+    """
+    before = text[:start].rstrip(" \t")
+    return not before or before[-1] in _SENTENCE_END
+
+
+def _content_end(span: tuple[str, int, int]) -> int:
+    """Where a token's characters stop and its sentence punctuation begins.
+
+    `_TOKEN` accepts a dot, so that "Node.js" and ".NET" survive tokenising.
+    The cost is that "teamwork." is also one token, with the full stop inside
+    it rather than in the text after it. Anything looking for punctuation
+    between two tokens has to start here, not at the token's end.
+    """
+    token, _start, end = span
+    return end - (len(token) - len(token.rstrip(".")))
+
+
+def _neighbour_is_an_unambiguous_skill(
+    text: str,
+    spans: list[tuple[str, int, int]],
+    normalised: list[str],
+    position: int,
+    width: int,
+    index: SkillIndex,
+) -> bool:
+    """True when a skill that needs no guard of its own sits right beside this.
+
+    Walks one token out on each side, stepping over a single conjunction, so
+    "C and Python" and "Go & Rust" find their neighbour while "Excel at
+    communication" does not - "at" is not a conjunction, so the walk stops
+    there instead of reaching a word two places away.
+
+    Two constraints, both of which cost a real false positive when missing:
+
+    * The neighbour must itself be unambiguous. Two English words cannot vouch
+      for each other, or the rule launders one bad match into two.
+    * The walk stops at a sentence boundary. "...and teamwork. Go to my
+      portfolio" put an unambiguous skill immediately to the left of "Go",
+      across a full stop, and vouched for it.
+
+    The full stop is easy to miss because `_TOKEN` treats a dot as part of a
+    token - "teamwork." is one token, so the punctuation sits inside the
+    neighbour rather than in the gap after it. `_content_end` puts it back.
+    """
+    for step, first in ((-1, position - 1), (1, position + width)):
+        cursor = first
+        near = position if step < 0 else position + width - 1
+        for _ in range(2):          # the neighbour, or a conjunction then it
+            if not 0 <= cursor < len(spans):
+                break
+            left, right = (cursor, near) if step < 0 else (near, cursor)
+            gap = text[_content_end(spans[left]) : spans[right][1]]
+            if any(c in _SENTENCE_END for c in gap):
+                break
+            token = normalised[cursor]
+            if token in index.by_key and not _is_ambiguous(token):
+                return True
+            if token not in _CONJUNCTIONS:
+                break
+            near = cursor
+            cursor += step
+    return False
+
+
 def _ambiguous_match_is_credible(
-    text: str, start: int, end: int, surface: str, canonical: str
+    text: str,
+    start: int,
+    end: int,
+    surface: str,
+    canonical: str,
+    key: str,
+    spans: list[tuple[str, int, int]],
+    normalised: list[str],
+    position: int,
+    width: int,
+    index: SkillIndex,
 ) -> bool:
     """Decide whether a short/English-word match is really a skill.
 
-    Accepted when EITHER:
-      * the surface casing matches the canonical name exactly - "Go" and "C"
-        are capitalised as skills and lowercase as English, or
-      * the match sits inside a delimited list - "C, C++, Java" - which is how
-        a skills line is written.
-    """
-    if surface == canonical:
-        return True
+    Accepted when ANY of:
 
+      1. The match sits inside a delimited list - "C, C++, Java" - which is how
+         a skills line is written. Casing is not required here: a lowercase
+         "go" between two commas is still the language.
+      2. Its casing matches the canonical name AND an unambiguous skill sits
+         next to it, allowing one conjunction: "C and Python".
+      3. Its casing matches the canonical name AND that capital carries
+         information - the name is longer than one character, and the match
+         does not open a sentence.
+
+    Rule 3 used to be the whole test, and it accepted every example the module
+    docstring lists as a false positive. "Go to the portal", "Swift delivery"
+    and "Excel at communication" all open a sentence; "a C grade" is a single
+    character, which English capitalises in both readings.
+    """
     before = text[max(0, start - 12) : start]
     after = text[end : end + 12]
-
     prev_char = next((c for c in reversed(before) if not c.isspace()), "\n")
     next_char = next((c for c in after if not c.isspace()), "\n")
+    if prev_char in _LIST_DELIMITERS and next_char in _LIST_DELIMITERS:
+        return True
 
-    return prev_char in _LIST_DELIMITERS and next_char in _LIST_DELIMITERS
+    if surface != canonical:
+        return False
+
+    if _neighbour_is_an_unambiguous_skill(
+        text, spans, normalised, position, width, index
+    ):
+        return True
+
+    return len(key) > 1 and not _starts_a_sentence(text, start)
 
 
 # ---------------------------------------------------------------------------
@@ -246,10 +360,17 @@ def _exact_pass(text: str, index: SkillIndex) -> list[SkillHit]:
             name, category = found
             start = spans[position][1]
             end = spans[position + width - 1][2]
+            # `_normalise_token` ignores trailing dots, so the raw token can
+            # carry sentence punctuation that the key does not. Leaving it in
+            # the span highlights the full stop in the UI, and makes the casing
+            # test below compare "Go." against "Go" and fail.
+            while end > start and text[end - 1] == ".":
+                end -= 1
             surface = text[start:end]
 
             if _is_ambiguous(key) and not _ambiguous_match_is_credible(
-                text, start, end, surface, name
+                text, start, end, surface, name, key,
+                spans, normalised, position, width, index,
             ):
                 continue
 
@@ -272,12 +393,17 @@ def _exact_pass(text: str, index: SkillIndex) -> list[SkillHit]:
 
 
 def _fuzzy_pass(
-    section_text: str, offset: int, index: SkillIndex, already: set[str]
+    section_text: str,
+    offset: int,
+    index: SkillIndex,
+    already: set[str],
+    occupied: list[tuple[int, int]],
 ) -> list[SkillHit]:
     """Recover misspelled skills inside one section.
 
     `offset` is where `section_text` starts in the full document, so the
-    returned offsets stay absolute. Returns [] when rapidfuzz is missing.
+    returned offsets stay absolute. `occupied` is the spans the exact pass has
+    already claimed. Returns [] when rapidfuzz is missing.
     """
     # rapidfuzz is a compiled C++ extension, so guard both failure modes. This
     # runs once per section, which is why optional.load only logs the first
@@ -308,6 +434,14 @@ def _fuzzy_pass(
         key = _normalise_token(surface)
         if key in index.by_key:       # exact pass already had it
             continue
+        if any(
+            offset + start < taken_end and taken_start < offset + end
+            for taken_start, taken_end in occupied
+        ):
+            # This token is part of a phrase the exact pass already claimed -
+            # "Processing" inside "Natural Language Processing". Two hits over
+            # the same characters draw two overlapping highlights.
+            continue
 
         match = process.extractOne(
             key, single_word_keys, scorer=fuzz.token_set_ratio,
@@ -336,16 +470,23 @@ def _fuzzy_pass(
 
 
 def find_skills(
-    text: str, fuzzy_scope: str | None = None, fuzzy_offset: int = 0
+    text: str, fuzzy_spans: list[tuple[int, int]] | None = None
 ) -> list[SkillHit]:
     """Find every skill in `text`, ordered by position.
 
     Args:
         text: the full document. Offsets in the result index into this string.
-        fuzzy_scope: text of the SKILLS section, if one was found. The fuzzy
-            pass runs over this only. Pass None to skip pass 2 entirely.
-        fuzzy_offset: character offset of `fuzzy_scope` within `text`, so the
-            fuzzy hits carry absolute positions.
+        fuzzy_spans: character spans of the SKILLS section(s), from
+            `SegmentedResume.spans("SKILLS")`. Pass None or an empty list to
+            skip pass 2 entirely.
+
+    The scope is a span rather than a string because the two have to agree.
+    An earlier signature took the section text and, separately, the offset the
+    caller believed it sat at; the caller recovered that offset by searching
+    the document for the section text, which is a rebuild and generally not a
+    substring of it. When the search failed the offset silently became 0 and
+    every fuzzy highlight pointed at the top of the document. Slicing the
+    document with a span cannot disagree with itself.
 
         >>> hits = find_skills("Built REST APIs with Node.js and PostgreSQL.")
         >>> sorted({h.name for h in hits})
@@ -357,9 +498,13 @@ def find_skills(
     index = load_index()
     hits = _exact_pass(text, index)
 
-    if fuzzy_scope:
+    if fuzzy_spans:
         already = {h.name for h in hits}
-        hits.extend(_fuzzy_pass(fuzzy_scope, fuzzy_offset, index, already))
+        occupied = [(h.start, h.end) for h in hits]
+        for start, end in fuzzy_spans:
+            hits.extend(
+                _fuzzy_pass(text[start:end], start, index, already, occupied)
+            )
 
     hits.sort(key=lambda h: h.start)
     return hits

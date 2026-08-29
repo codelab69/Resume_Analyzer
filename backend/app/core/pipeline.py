@@ -144,14 +144,14 @@ def analyse(data: bytes, filename: str) -> ResumeAnalysis:
     watch.lap("entities")
 
     # --- 4. skills --------------------------------------------------------
-    # The fuzzy pass is scoped to the SKILLS section, so find where that
-    # section's text sits inside the full document to keep offsets absolute.
-    skills_text = segmented.get("SKILLS")
-    fuzzy_offset = document.text.find(skills_text) if skills_text else 0
+    # The fuzzy pass is scoped to the SKILLS section, and takes that section's
+    # character span rather than its text. Segmentation already knows where the
+    # section is; re-deriving the position here by searching for the section
+    # text found nothing whenever the section held a blank line or appeared
+    # twice, and silently fell back to offset 0 - see S4.5b.
     skill_hits = skills.find_skills(
         document.text,
-        fuzzy_scope=skills_text or None,
-        fuzzy_offset=max(0, fuzzy_offset),
+        fuzzy_spans=segmented.spans("SKILLS"),
     )
     watch.lap("skills")
 
@@ -236,8 +236,7 @@ def warmup() -> dict[str, str]:
         _FUZZY_WARMUP_TEXT = "Python, Javascrpt, Docker, Kubernets, PostgreSQL"
         skills.find_skills(
             _FUZZY_WARMUP_TEXT,
-            fuzzy_scope=_FUZZY_WARMUP_TEXT,
-            fuzzy_offset=0,
+            fuzzy_spans=[(0, len(_FUZZY_WARMUP_TEXT))],
         )
         status["fuzzy_matching"] = "ready"
     except Exception as exc:
