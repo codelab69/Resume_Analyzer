@@ -27,6 +27,7 @@ a student what to do, "62" does not.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
 
 from app.core import embed, skills
@@ -205,21 +206,30 @@ def skill_score(
 
 
 def lexical_score(resume_text: str, jd_text: str) -> float:
-    """TF-IDF cosine over the two documents.
-
-    IDF is computed from this pair alone, which is the standard pairwise
-    formulation: a term appearing in both documents gets a lower weight than
-    one appearing in only one, so shared rare words drive the score.
+    """Cosine over sublinear term frequencies, with a two-document IDF.
 
         idf(t) = log((1 + N) / (1 + df(t))) + 1     with N = 2
 
-    This deliberately mirrors what keyword-based applicant tracking systems
-    actually do, which is why it earns its 20% of the total even though it is
-    the least intelligent of the four signals.
+    WHAT THAT IDF ACTUALLY DOES, WHICH IS ALMOST NOTHING
+    ----------------------------------------------------
+    With N = 2 there are only two possible values. A term in both documents
+    gets log(3/3) + 1 = 1.0. A term in one gets log(3/2) + 1 = 1.4055.
 
-    IMPROVEMENT PATH: compute IDF over the job corpus instead of the pair.
-    That makes weights reflect the whole labour market rather than two
-    documents. See the project docs for the experiment.
+    Only terms present in *both* documents contribute to the dot product, and
+    every one of them therefore carries exactly the same weight. The IDF
+    cannot prefer one shared term over another, because with two documents
+    "rare" has no meaning. All it does is inflate the norms by however much
+    unshared vocabulary each side has - a length penalty, not a weighting.
+
+    Measured over twelve job descriptions against the sample resume, dropping
+    the IDF entirely changes every score and **reorders nothing**. So the
+    signal is TF cosine with a vocabulary-overlap penalty, and describing it
+    as TF-IDF oversold it. It still mirrors what keyword-based applicant
+    tracking systems do, which is what its 20% is for.
+
+    The docstring here used to claim that "shared rare words drive the score",
+    which the arithmetic above cannot deliver - see [[Job Matching]] for the
+    corpus-IDF experiment, its numbers, and why it is not adopted yet.
     """
     resume_terms = _term_frequencies(resume_text)
     jd_terms = _term_frequencies(jd_text)
@@ -267,6 +277,45 @@ def _sparse_cosine(a: dict[str, float], b: dict[str, float]) -> float:
 # S_fit - hard eligibility
 # ---------------------------------------------------------------------------
 
+# Phrases that put a number of years next to something that is not the
+# candidate's experience. A posting boasting about the company's age was being
+# read as a hard requirement, and the student was told the role wanted 25
+# years of experience.
+_NOT_A_REQUIREMENT = re.compile(
+    r"\b(?:in business|founded|established|incorporated|history|heritage"
+    r"|anniversary|track record|years ago|combined|between us|as a company"
+    r"|since \d{4})\b",
+    re.I,
+)
+
+# The disqualifying phrase has to be in the same sentence as the number. A
+# fixed character window is not good enough: "Between us we have 30 years of
+# combined experience. Requires 2 years." puts "combined" 40 characters before
+# a real requirement and suppressed it. Same correction the neighbour walk in
+# skills.py needed - a sentence boundary is where context stops.
+_SENTENCE_SPLIT = re.compile(r"[.!?\n]")
+
+
+def _sentence_around(text: str, start: int, end: int) -> str:
+    """The sentence containing the span, used to judge nearby words."""
+    left = 0
+    for match in _SENTENCE_SPLIT.finditer(text, 0, start):
+        left = match.end()
+    right_match = _SENTENCE_SPLIT.search(text, end)
+    right = right_match.start() if right_match else len(text)
+    return text[left:right]
+
+# How a job description writes a degree, as opposed to how a resume does.
+# `entities.DEGREES` covers the resume side; these cover the posting side.
+_JD_DEGREE_PHRASES = [
+    (re.compile(r"\b(?:ph\.?\s?d|doctoral|doctorate)\b", re.I), 5),
+    (re.compile(r"\b(?:master'?s?|post[- ]?graduate|postgraduate)\s+"
+                r"(?:degree|qualification|in\b)", re.I), 4),
+    (re.compile(r"\b(?:bachelor'?s?|under[- ]?graduate|undergraduate)\s+"
+                r"(?:degree|qualification|in\b)", re.I), 3),
+    (re.compile(r"\bdegree\s+in\s+\w", re.I), 3),
+]
+
 _YEARS_PATTERNS = [
     r"(\d+)\s*\+?\s*(?:-|to)\s*\d+\s*(?:years?|yrs?)",   # "2-4 years"
     r"(\d+)\s*\+\s*(?:years?|yrs?)",                      # "3+ years"
@@ -281,9 +330,12 @@ def required_years(jd_text: str) -> float | None:
     Smallest, not largest: "2-4 years" is a range whose floor is the actual
     gate. Taking the top of the range would fail candidates the job would
     happily interview.
-    """
-    import re
 
+    Not every "N years" in a posting is a requirement. A company describing
+    itself - "in business for 25 years", "founded 10 years ago" - was read as
+    demanding that much experience, and the student was shown a note saying
+    the role asks for 25 years. `_NOT_A_REQUIREMENT` drops those.
+    """
     lowered = jd_text.lower()
     found: list[float] = []
     for pattern in _YEARS_PATTERNS:
@@ -292,21 +344,41 @@ def required_years(jd_text: str) -> float | None:
                 value = float(match.group(1))
             except (ValueError, IndexError):
                 continue
-            if 0 < value <= 40:          # reject years that are really dates
-                found.append(value)
+            if not 0 < value <= 40:      # reject years that are really dates
+                continue
+            sentence = _sentence_around(lowered, match.start(), match.end())
+            if _NOT_A_REQUIREMENT.search(sentence):
+                continue
+            found.append(value)
     return min(found) if found else None
 
 
 def _required_degree_level(jd_text: str) -> int:
-    """Highest degree level named in the job description, 0 if none."""
-    import re
+    """Highest degree level named in the job description, 0 if none.
 
+    Two lexicons, because a resume and a job description name a degree in
+    different languages. `entities.DEGREES` holds the abbreviations an Indian
+    resume uses - B.E, M.Tech, B.Sc. A posting usually writes it out in
+    generic English: "Bachelor's degree in Computer Science required". None of
+    the abbreviation patterns match that, so the degree half of `fit_score`
+    silently returned "no requirement" for the commonest phrasing there is.
+
+    The corpus in data/jobs.json does not show this: only 3 of its 26 postings
+    name a qualification at all, and all three use the abbreviations. The
+    defect appears the moment a student pastes a real posting, which is the
+    only way this function is ever called in production.
+    """
     from app.core.entities import DEGREES
 
     levels = [
         DEGREE_LEVEL.get(name, 0)
         for name, pattern in DEGREES
         if re.search(pattern, jd_text, re.I)
+    ]
+    levels += [
+        level
+        for pattern, level in _JD_DEGREE_PHRASES
+        if pattern.search(jd_text)
     ]
     return max(levels) if levels else 0
 

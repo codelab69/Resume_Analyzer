@@ -410,6 +410,134 @@ class TestRequiredYears:
     def test_reads_the_lowest_stated_requirement(self, text, expected):
         assert matcher.required_years(text) == expected
 
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "We have been in business for 25 years and need a fresh graduate",
+            "Founded 10 years ago. No prior experience required.",
+            "Our 40 years of history in logistics",
+            "Between us the team has 30 years of combined experience",
+        ],
+    )
+    def test_the_company_s_age_is_not_a_requirement(self, text):
+        # A posting describing itself was read as demanding that much
+        # experience, and the student was shown "This role asks for 25 years
+        # of experience and the resume shows 0."
+        assert matcher.required_years(text) is None
+
+    def test_a_real_requirement_survives_a_boast_in_another_sentence(self):
+        # The first version of the fix used a 60-character window, which
+        # reached back across the full stop and suppressed this. A sentence
+        # boundary is where context stops - the same correction the neighbour
+        # walk in skills.py needed.
+        text = (
+            "Between us we have 30 years of combined experience. "
+            "Requires 2 years."
+        )
+        assert matcher.required_years(text) == 2.0
+        assert matcher.required_years("We are 12 years old. Minimum 3 years of Python.") == 3.0
+
+
+class TestRequiredDegree:
+    """A resume and a job description name a degree in different languages.
+
+    `entities.DEGREES` holds the abbreviations an Indian resume uses - B.E,
+    M.Tech, B.Sc. A posting writes it out: "Bachelor's degree in Computer
+    Science required". Reusing the resume lexicon for the posting side meant
+    the commonest phrasing there is returned "no requirement", so half of
+    `fit_score` was inert for it.
+
+    The shipped corpus cannot show this. Only 3 of its 26 postings name a
+    qualification at all and all three use the abbreviations, so every fixture
+    passed. The defect appears the moment a student pastes a real posting,
+    which is the only way this is ever called in production.
+    """
+
+    @pytest.mark.parametrize(
+        "text,level",
+        [
+            ("Bachelor's degree in Computer Science required", 3),
+            ("Bachelors degree or equivalent", 3),
+            ("Undergraduate degree in any discipline", 3),
+            ("Master's degree preferred", 4),
+            ("Postgraduate degree in Statistics", 4),
+            ("PhD in Machine Learning", 5),
+            ("Requires a degree in Engineering", 3),
+        ],
+    )
+    def test_the_way_a_posting_writes_a_degree(self, text, level):
+        assert matcher._required_degree_level(text) == level
+
+    @pytest.mark.parametrize(
+        "text,level",
+        [
+            ("BE/BTech in CS", 3),
+            ("B.E. Computer Science", 3),
+            ("M.Tech preferred", 4),
+        ],
+    )
+    def test_the_abbreviations_still_work(self, text, level):
+        assert matcher._required_degree_level(text) == level
+
+    def test_no_qualification_named_is_no_requirement(self):
+        assert matcher._required_degree_level("No formal qualification needed") == 0
+        assert matcher._required_degree_level("Strong Python and SQL skills") == 0
+
+
+class TestLexicalIdfIsInert:
+    r"""The pairwise IDF cannot weight one shared term above another.
+
+    With N = 2 there are two possible IDF values: 1.0 for a term in both
+    documents, 1.4055 for a term in one. Only terms present in both contribute
+    to the dot product, so every term that can affect the similarity carries
+    exactly the same weight. The docstring claimed "shared rare words drive
+    the score", which the arithmetic cannot deliver.
+
+    These tests pin the property rather than the prose, so the day somebody
+    switches to a corpus IDF they get a red test telling them to update
+    [[Job Matching]] rather than a silently different score.
+    """
+
+    def _tf_only(self, a, b):
+        return matcher._sparse_cosine(
+            matcher._term_frequencies(a), matcher._term_frequencies(b)
+        )
+
+    def test_with_no_unshared_vocabulary_the_idf_disappears_entirely(self):
+        # Every term is in both documents, so every IDF is log(3/3)+1 = 1.0
+        # and the weighted score is exactly the unweighted one. This is the
+        # property, read out of the implementation rather than the docstring.
+        a = "python docker python postgresql"
+        b = "docker python postgresql postgresql"
+        assert matcher.lexical_score(a, b) == pytest.approx(self._tf_only(a, b))
+
+    def test_unshared_vocabulary_is_the_only_thing_the_idf_touches(self):
+        # Adding a word to one side only changes the score, because it changes
+        # that side's norm. It is a length penalty, not a term weighting.
+        a = "python docker postgresql"
+        b = "python docker postgresql"
+        assert matcher.lexical_score(a, b) == pytest.approx(1.0)
+        assert matcher.lexical_score(a + " kubernetes", b) < 1.0
+
+    def test_dropping_the_idf_reorders_nothing(
+        self, sample_resume_text, backend_jd, design_jd
+    ):
+        jds = [backend_jd, design_jd]
+        with_idf = [matcher.lexical_score(sample_resume_text, jd) for jd in jds]
+        without = [self._tf_only(sample_resume_text, jd) for jd in jds]
+
+        assert with_idf != without                       # the numbers differ
+        assert sorted(range(2), key=lambda i: -with_idf[i]) == sorted(
+            range(2), key=lambda i: -without[i]
+        )                                                # the order does not
+
+    def test_the_matching_jd_still_outscores_the_unrelated_one(
+        self, sample_resume_text, backend_jd, design_jd
+    ):
+        assert matcher.lexical_score(sample_resume_text, backend_jd) > (
+            matcher.lexical_score(sample_resume_text, design_jd) * 5
+        )
+
 
 # ---------------------------------------------------------------------------
 # Recommendations

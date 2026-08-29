@@ -220,7 +220,7 @@ Match = 100 × ( 0.40·S_semantic + 0.30·S_skill + 0.20·S_lexical + 0.10·S_fi
 |---|---|---|
 | `semantic` | Meaning | For each JD requirement, the best-matching resume chunk; max-pooled, then averaged |
 | `skill` | Concrete overlap | Weighted **recall** over the JD's skills |
-| `lexical` | Shared vocabulary | Pairwise TF-IDF cosine |
+| `lexical` | Shared vocabulary | Cosine over sublinear term frequencies. Its two-document IDF gives every *shared* term the same weight, so it is a vocabulary-overlap penalty rather than a term weighting — see [[Job Matching#The IDF does not do what the docstring said]] |
 | `fit` | Eligibility | Experience and degree against the stated minimum |
 
 Two design points carry most of the behaviour:

@@ -61,7 +61,7 @@ Everything ticked above was green at the same moment, on 2026-08-29:
 
 | Check | Result | Measured |
 |---|---|---|
-| `pytest` | **283 passed** in 2.7 s (120 at the start of Sprint 1, 268 before S4.7) | 2026-08-29 |
+| `pytest` | **303 passed** in 2.5 s (120 at the start of Sprint 1, 283 before S4.8) | 2026-08-29 |
 | `scripts/smoke_test.py` | passed, TOTAL 201 ms | 2026-08-29 |
 | `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed, on the transformer backend** | 2026-08-29 |
 | `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, notes empty | 2026-08-29 |
@@ -81,12 +81,13 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Twenty defects have been found by verifying rather than by looking
+> [!note] Twenty-three defects have been found by verifying rather than by looking
 > S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a, S4.4b, S4.4c, S4.5a, S4.5b,
-> S4.5c, S4.6a, S4.6b, S4.6c, S4.7a, S4.7b, S4.7c and S4.7d were all found by *running* the
-> thing being documented instead of trusting an existing comment or a remembered number.
-> None of them would have been caught by reading the code. Fourteen were invisible to a
-> green test suite, and one — S4.2a — was invisible *because* the code read
+> S4.5c, S4.6a-c, S4.7a-d, S4.8a, S4.8b and S4.8c were all found by *running* the thing
+> being documented instead of trusting an existing comment or a remembered number. None of
+> them would have been caught by reading the code. Seventeen were invisible to a green test
+> suite, two of them on fixtures that could not have failed, and one — S4.2a — was invisible
+> *because* the code read
 > like a correct implementation: clear docstring, named constants, a comment marking the
 > important line, all of it describing an intention rather than the behaviour. That is the
 > argument for the "Evidence" line on every tick.
@@ -113,6 +114,9 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > | S4.7b — a bare year counted as a quantified achievement | typing the bullets a student actually writes | Possibly, by someone who read `[\d,]{2,}` as "any two digits" |
 > | S4.7c — a resume with no skills got full marks on rule 7 | running the pipeline over an empty resume and reading the rows | No - the branch has a correct comment explaining why it is right |
 > | S4.7d — `i.e.` counted as a first-person pronoun | running the pattern against text that is not a resume bullet | Unlikely - `\bi\b` under `re.I` looks exactly right |
+> | S4.8a — the lexical signal's IDF weighted nothing | working out what the formula evaluates to at N=2 | Unlikely - the formula is the textbook one, and only the N makes it inert |
+> | S4.8b — the company's age was a hard experience requirement | writing out the sentences a real posting contains | No - "smallest stated requirement" reads as careful, and is, about the wrong thing |
+> | S4.8c — "Bachelor's degree" was no degree requirement | asking what a posting writes rather than what a resume writes | No - and no fixture in the corpus could have failed it |
 >
 > S4.3b, S4.4c and S4.5c are one defect three times, in three costumes: a count in the
 > README, a count in eleven vault files, four examples in docstrings. Prose that sits next
@@ -983,7 +987,93 @@ file that owns the behaviour, and every wikilink in it resolves or is itself on 
   `test_every_docstring_example_runs_and_passes`, because `count_date_forms` carries a doctest
   — the S4.5c control catching a regression in a module it was not written for.*
 
-- [ ] **S4.8 — [[Job Matching]]** — the four signals and the weighted formula
+- [x] **S4.8 — [[Job Matching]]** — the four signals and the weighted formula
+  *Evidence 2026-08-29: the full worked example run on both fixture JDs with every
+  contribution shown (backend 47 = 0.155 + 0.182 + 0.030 + 0.100; design 19), timings measured
+  over 10 calls, and the corpus-IDF alternative actually built and measured rather than
+  argued about. The note explains why 47 for a good match is not a bug and why the unrelated
+  posting is not zero, instead of leaving both to be read as errors. A "known limits" section
+  with four entries, including that no posting in the corpus states a years requirement at
+  all. Writing it found S4.8a, S4.8b and S4.8c. `pytest` **303 passed** (283 before), 20 new
+  tests.*
+
+- [x] **S4.8a — Defect: the lexical signal was not doing what its docstring described** *(unplanned)*
+  Found by working out what the IDF evaluates to, rather than reading the sentence describing
+  it.
+  **Cause:** the docstring promised that "a term appearing in both documents gets a lower
+  weight than one appearing in only one, so **shared rare words drive the score**". With
+  **N = 2** the IDF has exactly two possible values — 1.0 for a term in both documents,
+  1.4055 for a term in one. Only terms in *both* contribute to the dot product, so every term
+  that can affect the similarity carries the identical weight. The IDF cannot prefer one
+  shared term over another, because with two documents "rare" has no meaning. All it does is
+  inflate each side's norm by its unshared vocabulary: a length penalty, not a term weighting.
+  The sentence also contradicts itself — it says shared terms get a *lower* weight and then
+  says shared words drive the score. This signal is **20% of the total**.
+  **Fix, and what was deliberately not fixed:** the docstring now describes the arithmetic.
+  The obvious improvement — IDF over the 26-posting corpus, which the old docstring already
+  named while pointing at "the experiment in the project docs", an experiment that did not
+  exist — was **built and measured**. It is a real weighting (`python` 1.657, `pytest` 3.603)
+  and it changes the ranking. It also *narrows* the only separation available to measure. One
+  pair is not evidence, so it is **not adopted**, and the note records the numbers so nobody
+  has to run it again. Two characterisation tests pin the property rather than the prose, so
+  switching to a corpus IDF produces a red test pointing at that section instead of a silently
+  different score.
+  **AC:** the docstring describes the code, and the deferred alternative is recorded with its
+  numbers rather than as an aspiration.
+  *Evidence 2026-08-29: across **twelve** job descriptions against the sample resume, dropping
+  the IDF entirely changes every score and **reorders nothing** — Backend 0.1583 → 0.2689,
+  design_jd 0.0148 → 0.0289, ranking identical. Corpus IDF: backend/design separation
+  **10.02× → 7.17×**. Mutation: changing `N = 2` to `N = 26` in the pairwise formula breaks
+  **nothing**, correctly, because it is still constant across shared terms; only a weighting
+  that varies per term fails `test_with_no_unshared_vocabulary_the_idf_disappears_entirely`,
+  which is exactly the property the tests exist to pin.*
+
+- [x] **S4.8b — Defect: the company's age was read as a hard experience requirement** *(unplanned)*
+  Found by writing out the sentences a real posting contains, rather than the ones the
+  patterns were written against.
+  **Cause:** `required_years` takes the smallest "N years" *anywhere* in the posting. Smallest
+  is right — `2-4 years` is a range whose floor is the gate. Anywhere is not. `We have been in
+  business for 25 years and need a fresh graduate` parsed as **25 years required**; `Founded 10
+  years ago. No prior experience required.` as **10**; `Our 40 years of history` as **40**. The
+  only guard rejects values above 40, which was there for dates and does nothing about a
+  company describing itself. The student was shown, verbatim: *"This role asks for 25 years of
+  experience and the resume shows 0"* — on a posting asking for a fresh graduate.
+  **Fix:** a short list of disqualifying phrases — *in business*, *founded*, *years ago*,
+  *combined*, *track record* — checked **in the same sentence as the number**.
+  **The first version of the fix over-corrected**, and the mutation run is what showed it:
+  a 60-character window reached back across a full stop and suppressed a real requirement in
+  `Between us we have 30 years of combined experience. Requires 2 years.` A sentence boundary
+  is where context stops — the same correction the neighbour walk in [[Skill Matching]] needed
+  three stories earlier, for the same reason, and it is now the second time a fixed character
+  window has been the wrong tool in this codebase.
+  **AC:** a company boast is not a requirement, and a requirement in the next sentence still is.
+  *Evidence 2026-08-29, run on both versions: the three boasts **25 / 10 / 40 years → None**;
+  unchanged: `2-4 years` → 2, `3+ years building backend services` → 3, `at least 1 year` → 1.
+  `Between us we have 30 years of combined experience. Requires 2 years.` → **2**, and
+  `We are 12 years old. Minimum 3 years of Python.` → **3**.*
+
+- [x] **S4.8c — Defect: a posting saying "Bachelor's degree" had no degree requirement** *(unplanned)*
+  Found by asking what a job description actually writes, as opposed to what a resume writes.
+  **Cause:** `_required_degree_level` reuses `entities.DEGREES`, which is the lexicon for
+  reading **resumes** — Indian abbreviations, `B.E`, `B.Tech`, `M.Sc`, `M.C.A`. A posting
+  writes it out in generic English and none of those patterns match, so
+  `Bachelor's degree in Computer Science required` returned level **0**, meaning "no
+  requirement stated", which awards the degree half of `S_fit` full marks. For the commonest
+  phrasing in the English-speaking world, half the eligibility signal was inert.
+  **The corpus cannot show it.** Only **3 of the 26** postings in `data/jobs.json` name a
+  qualification at all and all three use abbreviations, so every fixture passed and always
+  would. The defect appears the first time a student pastes a real posting into the match
+  screen — the only way this function is ever called in production. Same shape as S4.5b, where
+  a correct end-to-end assertion ran green forever on the one fixture that could not fail it.
+  **Fix:** a second, posting-side lexicon, with the docstring saying which language each one
+  reads.
+  **AC:** the three generic phrasings resolve to the right level and the abbreviations still do.
+  *Evidence 2026-08-29, run on both versions: `Bachelor's degree in Computer Science required`
+  **0 → 3**, `Bachelors degree or equivalent` **0 → 3**, `Master's degree preferred`
+  **0 → 4**, `Requires a degree in Engineering` **0 → 3**; `BE/BTech in CS` and
+  `B.E. Computer Science` unchanged at 3, `M.Tech` at 4, and `No formal qualification needed`
+  still 0. Corpus-wide detection unchanged at 3 of 26, which is the point.*
+
 - [ ] **S4.9 — [[Job Recommendation]]** — retrieve-then-rerank, and BM25 written out longhand
 
 **AC for each:** states the problem, the approach taken, at least one alternative that
