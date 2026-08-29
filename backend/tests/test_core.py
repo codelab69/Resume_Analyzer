@@ -1098,14 +1098,33 @@ class TestScriptPathsInTheCode:
     exist or be marked `not yet written` on the spot, so a reader is never sent
     to a file that is not there. Sprint 6 makes the paths real and the markers
     can then come out.
+
+    The scan covers `app/`, `scripts/`, the data files and `.env.example`,
+    because all five are things a reader follows instructions out of. Narrowing
+    it to `app/` is what let three references survive S4.6c - see S5.2a.
     """
 
-    APP = pathlib.Path(__file__).resolve().parents[1] / "app"
-    SCRIPTS = pathlib.Path(__file__).resolve().parents[1] / "scripts"
+    BACKEND = pathlib.Path(__file__).resolve().parents[1]
+    SCRIPTS = BACKEND / "scripts"
+
+    def _files_that_name_scripts(self):
+        """Everything a reader might follow an instruction out of.
+
+        This started as `app/**/*.py` and missed three references while
+        [[Deployment]] was being written: one in `.env.example`, which is the
+        file a deployer copies, and two inside the data files' own header
+        comments. A rule that only covers the source is not the rule; the rule
+        is that a path a reader can follow either works or admits it does not.
+        """
+        yield from (self.BACKEND / "app").rglob("*.py")
+        yield from self.SCRIPTS.glob("*.py")
+        yield from (self.BACKEND / "data").glob("*.json")
+        yield self.BACKEND / ".env.example"
+        yield self.BACKEND / "requirements.txt"
 
     def test_every_script_the_code_names_exists_or_says_it_does_not(self):
         unmarked = []
-        for source in self.APP.rglob("*.py"):
+        for source in self._files_that_name_scripts():
             text = source.read_text(encoding="utf-8")
             for match in re.finditer(r"scripts/(\w+)\.py", text):
                 if (self.SCRIPTS / f"{match.group(1)}.py").exists():

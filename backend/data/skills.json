@@ -23,7 +23,7 @@
     "  This ships with a curated technology list. To grow it to full coverage,",
     "  download the ESCO skills taxonomy (free, ec.europa.eu/esco) and merge",
     "  the 'skill' concepts in with category 'practice'. Run",
-    "  scripts/validate_skills.py afterwards - it catches duplicate names and",
+    "  scripts/validate_skills.py afterwards - not yet written; when it exists it",
     "  aliases that collide across entries, which silently break matching."
   ],
 

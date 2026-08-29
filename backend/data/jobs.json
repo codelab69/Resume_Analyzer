@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "source": "Hand-written seed corpus. Replace with a real dataset via scripts/import_jobs.py.",
+  "source": "Hand-written seed corpus, 26 postings. A real dataset would come in via scripts/import_jobs.py, which is not yet written.",
   "notes": [
     "26 postings covering every role family the profile classifier needs.",
     "Each `category` value becomes a role label, so keep them consistent -",

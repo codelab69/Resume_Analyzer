@@ -81,14 +81,13 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Twenty-five defects have been found by verifying rather than by looking
-> S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a, S4.4b, S4.4c, S4.5a, S4.5b,
-> S4.5c, S4.6a-c, S4.7a-d, S4.8a-c, S4.9a and S4.9b were all found by *running* the thing
-> being documented instead of trusting an existing comment or a remembered number. None of
-> them would have been caught by reading the code. Nineteen were invisible to a green test
-> suite, two of them on fixtures that could not have failed, and one — S4.2a — was invisible
-> *because* the code read
-> like a correct implementation: clear docstring, named constants, a comment marking the
+> [!note] Twenty-six defects have been found by verifying rather than by looking
+> S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a-c, S4.5a-c, S4.6a-c, S4.7a-d,
+> S4.8a-c, S4.9a, S4.9b and S5.2a were all found by *running* the thing being documented
+> instead of trusting an existing comment or a remembered number. None of them would have
+> been caught by reading the code. Nineteen were invisible to a green test suite, two of them
+> on fixtures that could not have failed, and one — S4.2a — was invisible *because* the
+> code read like a correct implementation: clear docstring, named constants, a comment marking the
 > important line, all of it describing an intention rather than the behaviour. That is the
 > argument for the "Evidence" line on every tick.
 >
@@ -119,6 +118,7 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > | S4.8c — "Bachelor's degree" was no degree requirement | asking what a posting writes rather than what a resume writes | No - and no fixture in the corpus could have failed it |
 > | S4.9a — the BM25 query never repeated the skills it meant to weight | printing the query the comment describes | Possibly - `" ".join(x) * 3` is a seam bug, and seams are what review is for |
 > | S4.9b — the precomputed index rebuilt its expensive table per call | testing the docstring's premise at the scale the docstring names | No - it is correct code, in the wrong place, inside an object named for caching |
+> | S5.2a — three more scripts named in files the control did not scan | reading `.env.example` line by line while documenting deployment | No - the control existed, passed, and had the wrong scope |
 >
 > S4.3b, S4.4c and S4.5c are one defect three times, in three costumes: a count in the
 > README, a count in eleven vault files, four examples in docstrings. Prose that sits next
@@ -1150,7 +1150,49 @@ was rejected and why, and the worked numbers for one real example.
   moving to a second machine, a "do not copy these four folders across" list, a
   symptom → cause → fix table, and a "what you do not need" section. Writing it is what
   surfaced S1.5 above.*
-- [ ] **S5.2 — [[Deployment]]** — where each half goes, and the hosting trap to avoid
+- [x] **S5.2 — [[Deployment]]** — where each half goes, and the hosting trap to avoid
+  **AC:** a reader who has never deployed anything can tell which platforms will work, what
+  to configure, and how to prove the deployment is good — with every size and every trap
+  measured on this machine rather than recalled.
+  *Evidence 2026-08-29: four traps, each measured. Trap 1 — venv **1.2 GB**, torch **524 MB**,
+  model cache **88 MB**, `dist/` **5.2 MB**, `node_modules` 134 MB, with three honest hosting
+  options including "deploy without the transformer" and what that costs (0.39 → 0.19 semantic
+  on a matching JD, from [[Decision Log]]). Trap 2 — `VITE_API_URL` is inlined at build time,
+  **proven** by building with a sentinel value and grepping it out of the bundle, and by
+  `grep -c "import.meta.env" dist/…js` returning **0**. Trap 3 — SQLite on an ephemeral disk
+  loses everything silently, because `init_db()` succeeds. Trap 4 — the 88 MB model download
+  on a cold container, and the `RUN` line that moves it to build time. Also states three
+  settings that are unsafe at their defaults, and `HOST=0.0.0.0`, which is the second most
+  common first-deploy failure after CORS. A "deliberately not here" section explains why there
+  is no Dockerfile: writing one that has never been run would be four of the defects this
+  project has spent a sprint finding.*
+
+  > [!note] The draft of this note contained a defect of its own, caught before it shipped
+  > It claimed `e2e_check.py` "does not currently take a base URL" and that pointing it at a
+  > deployed host was unwritten S7.4 work. Running `--help` showed the flag has existed since
+  > the first commit, defaulting to `http://127.0.0.1:8000`. The claim was replaced with the
+  > verified command and a line saying the first draft got it wrong. Writing a limitation that
+  > does not exist is the same failure as writing a feature that does not — this vault has
+  > twenty-five entries about the second kind and this is the first of the first kind.
+
+- [x] **S5.2a — Defect: three more scripts named in files the control test did not scan** *(unplanned)*
+  Found by reading `.env.example` line by line while writing [[Deployment]]'s configuration
+  table.
+  **Cause:** S4.6c added `TestScriptPathsInTheCode`, which scans `app/` for `scripts/*.py`
+  paths and requires each to exist or say "not yet written". It scanned only `app/`. Three
+  references sat outside it: `.env.example` (`tune_weights.py`) — the file a deployer copies
+  and reads top to bottom — and the header comments inside `data/jobs.json`
+  (`import_jobs.py`) and `data/skills.json` (`validate_skills.py`), which are the two files
+  someone extending the ontology opens first.
+  **Fix:** all three marked, and the scan widened to `app/`, `scripts/`, `data/*.json`,
+  `.env.example` and `requirements.txt` — everything a reader follows an instruction out of.
+  The rule was right; the scope was the assumption.
+  **AC:** a path a reader can follow either works or admits it does not, wherever it is written.
+  *Evidence 2026-08-29: the widened scan found **1** further unmarked reference immediately —
+  the `.env.example` fix itself, because the phrase "not yet written" had wrapped across a
+  comment continuation (`not\n# yet written`) and the marker has to be one phrase within 200
+  characters of the mention. Rewrapped. Unmarked references across the whole backend: **3 → 0**.*
+
 - [ ] **S5.3 — [[Extending the Ontology]]** — adding skills, headings and verbs safely
 - [ ] **S5.4 — [[Troubleshooting]]** — symptom → cause → fix, seeded from every bug hit during the build
 - [ ] **S5.5 — [[Glossary]]** — the terms this vault uses, defined once
