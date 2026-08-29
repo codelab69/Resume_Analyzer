@@ -23,7 +23,7 @@ detail lives.
 | Where does each section start? | `segment.py` | Lexicon + structural heuristics, no model | [[Section Segmentation]] |
 | Who is this, and how long have they worked? | `entities.py` | Regex, then rules, then optional NER | [[Entity Extraction]] |
 | Which skills does this person have? | `skills.py` | Longest-match-wins n-gram index | [[Skill Matching]] |
-| What kind of role is this? | `classify.py` | Supervised model, with a rule fallback | [[Role Classification]] |
+| What kind of role is this? | `classify.py` | Supervised model, with a corpus-derived profile fallback | [[Role Classification]] |
 | Is this resume machine-readable? | `ats.py` | Ten deterministic rules totalling 100 | [[ATS Scoring]] |
 | How well does this fit that job? | `matcher.py` | Four weighted signals | [[Job Matching]] |
 | Which jobs should they apply to? | `recommend.py` | BM25 retrieve, then semantic rerank | [[Job Recommendation]] |
@@ -170,9 +170,13 @@ false positives faster than recoveries.
 
 ### Role classification · [[Role Classification]]
 
-TF-IDF plus a linear classifier when a trained artifact exists; hand-written role
-profiles scored against the extracted skills when it does not. Both paths return the
-same shape, so nothing downstream knows which ran.
+TF-IDF plus a linear classifier when a trained artifact exists; role profiles **derived
+from the job corpus** scored against the extracted skills when it does not. Both paths
+return the same shape, so nothing downstream knows which ran.
+
+Today only the second path ever runs: there is no trained artifact, and the script that
+would produce one is not yet written. A prediction below a useful confidence is reported
+as *no* prediction rather than as a "General" profile — see [[Role Classification#S4.6a — the one case with no evidence was the one case reported as certain]].
 
 ---
 

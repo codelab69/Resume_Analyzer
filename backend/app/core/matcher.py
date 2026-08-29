@@ -14,8 +14,10 @@ different direction, which is exactly why the combination is defensible:
     S_fit    eligibility    catches hard gates, says nothing about ability
 
 The weights live in app/config.py and are validated to sum to 1.0. They are a
-starting point, not a result - tune them against hand-labelled pairs with
-scripts/tune_weights.py and report the correlation before and after.
+starting point, not a result. Tuning them means hand-labelled pairs and a
+reported correlation before and after; scripts/tune_weights.py will do that
+and is not yet written, so today's weights are an informed guess and this
+docstring is the only thing saying so.
 
 Every sub-score is returned alongside the total. Showing one number hides the
 only actionable information: "81 on semantic fit, 34 on skill overlap" tells

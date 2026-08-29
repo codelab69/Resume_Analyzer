@@ -10,9 +10,11 @@ Download the Kaggle "LinkedIn Job Postings" dataset and run:
 
     python scripts/import_jobs.py path/to/postings.csv --limit 20000
 
-That script maps the CSV columns onto the shape below and writes a new
-jobs.json. Nothing else in the application changes - the recommender, the
-role profiles and the classifier all read through this module.
+That importer is not yet written. When it is, it maps the CSV columns onto the
+shape below and writes a new jobs.json; nothing else in the application
+changes, because the recommender, the role profiles and the classifier all read
+through this module. Until then the corpus is the 26 hand-written postings in
+data/jobs.json, and every number derived from it carries that sample size.
 
 Keeping the loader behind one function is what makes that swap a one-file
 change instead of a refactor.
@@ -82,9 +84,9 @@ def load_jobs() -> list[Job]:
     """
     if not JOBS_FILE.exists():
         raise FileNotFoundError(
-            f"Job corpus missing at {JOBS_FILE}. It ships with the repository - "
-            f"restore it from version control, or generate one with "
-            f"scripts/import_jobs.py."
+            f"Job corpus missing at {JOBS_FILE}. It ships with the repository, "
+            f"so restore it from version control. (The importer that would "
+            f"generate a new one, scripts/import_jobs.py, is not yet written.)"
         )
 
     raw = json.loads(JOBS_FILE.read_text(encoding="utf-8"))

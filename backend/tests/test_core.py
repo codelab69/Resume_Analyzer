@@ -18,7 +18,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.core import (
-    ats, embed, entities, extract, optional, pipeline, segment, skills, text_utils,
+    ats, classify, embed, entities, extract, optional, pipeline, segment, skills,
+    text_utils,
 )
 
 
@@ -1084,6 +1085,50 @@ class TestDoctests:
         assert attempted == written
 
 
+class TestScriptPathsInTheCode:
+    """A script path in an instruction is a promise that the script is there.
+
+    `app/` names four of them. Three had never existed: `train_classifier.py`,
+    `import_jobs.py` and `tune_weights.py` are all Sprint 6 items. One was in
+    a log line printed at every boot without a trained model, and one was in a
+    user-facing `FileNotFoundError` telling the reader how to recover.
+
+    The rule this test enforces is not "every script must exist" - three of
+    them legitimately do not yet. It is that a path the code names must either
+    exist or be marked `not yet written` on the spot, so a reader is never sent
+    to a file that is not there. Sprint 6 makes the paths real and the markers
+    can then come out.
+    """
+
+    APP = pathlib.Path(__file__).resolve().parents[1] / "app"
+    SCRIPTS = pathlib.Path(__file__).resolve().parents[1] / "scripts"
+
+    def test_every_script_the_code_names_exists_or_says_it_does_not(self):
+        unmarked = []
+        for source in self.APP.rglob("*.py"):
+            text = source.read_text(encoding="utf-8")
+            for match in re.finditer(r"scripts/(\w+)\.py", text):
+                if (self.SCRIPTS / f"{match.group(1)}.py").exists():
+                    continue
+                # The disclaimer has to be near the mention, not anywhere in
+                # the file, or one marker at the bottom would excuse the lot.
+                window = text[match.start() : match.end() + 200]
+                if "not yet written" not in window:
+                    line = 1 + text[: match.start()].count("\n")
+                    unmarked.append(f"{source.name}:{line} {match.group(0)}")
+        assert not unmarked, unmarked
+
+    def test_the_scripts_that_do_exist_are_the_ones_the_guides_promise(self):
+        # The other direction: a script on disk that no document mentions is
+        # a tool nobody will find.
+        on_disk = {p.stem for p in self.SCRIPTS.glob("*.py")}
+        docs = (pathlib.Path(__file__).resolve().parents[2] / "docs")
+        mentioned = set()
+        for note in docs.glob("*.md"):
+            mentioned |= set(re.findall(r"scripts/(\w+)\.py", note.read_text(encoding="utf-8")))
+        assert on_disk <= mentioned, sorted(on_disk - mentioned)
+
+
 class TestSectionSpans:
     def test_a_span_slices_the_original_document(self):
         text = "SKILLS\n\n  Python, SQL  \n\nEDUCATION\nB.E. 2026\n"
@@ -1109,6 +1154,188 @@ class TestSectionSpans:
 # ---------------------------------------------------------------------------
 # embed
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# classify
+# ---------------------------------------------------------------------------
+
+
+class _StubVectorizer:
+    """Stands in for the TF-IDF vectorizer without needing scikit-learn."""
+
+    def transform(self, documents):
+        return list(documents)
+
+
+class _StubModel:
+    """A LinearSVC-shaped stub: decision_function, no predict_proba.
+
+    That combination is the branch that matters, because it is the one that
+    has to turn margins into comparable confidences by hand.
+    """
+
+    def __init__(self, margins):
+        self.margins = margins
+
+    def decision_function(self, features):
+        return [self.margins]
+
+
+class TestRoleClassification:
+    """The first tests this module has had.
+
+    `classify.py` is one of the six pipeline stages and had no unit tests at
+    all - the only assertion touching it anywhere was `assert strong.role.role`,
+    that the role name is a non-empty string. 251 lines, two backends, and the
+    bar was "returns something". S4.6a is what was hiding behind that.
+    """
+
+    # --- the profile classifier ------------------------------------------
+
+    def test_profiles_are_built_for_every_role_in_the_corpus(self):
+        from app.core import jobs_data
+
+        profiles = classify._role_profiles()
+        assert set(profiles) == {job.category for job in jobs_data.load_jobs()}
+
+    def test_a_weight_is_the_fraction_of_that_role_s_postings(self):
+        # The docstring's claim: a skill every posting for a role asks for
+        # weighs 1.0, one in a quarter of them weighs 0.25.
+        for weights in classify._role_profiles().values():
+            for weight in weights.values():
+                assert 0 < weight <= 1.0
+
+    def test_a_resume_matching_one_role_predicts_that_role(self):
+        prediction = classify._predict_profile(
+            {"Kubernetes", "CI/CD", "Terraform", "Prometheus", "Grafana", "Linux"}
+        )
+        assert prediction.role == "DevOps Engineer"
+        assert prediction.backend == "profile"
+        assert prediction.is_confident
+
+    def test_alternatives_are_the_next_three_roles_in_order(self):
+        prediction = classify._predict_profile({"Python", "SQL", "Pandas"})
+        assert len(prediction.alternatives) == 3
+        scores = [score for _role, score in prediction.alternatives]
+        assert scores == sorted(scores, reverse=True)
+        assert prediction.confidence >= scores[0]
+
+    # --- S4.6a: nothing matched is not an answer --------------------------
+
+    def test_a_resume_with_no_recognised_skills_is_not_confident(self):
+        # This is the bug. `is_confident` returned True whenever
+        # `alternatives` was empty, and the one path that produces an empty
+        # alternatives list is the one where nothing matched at all - so the
+        # single case with no evidence was the single case reported as certain.
+        prediction = classify.predict("Nothing here at all.", set())
+        assert prediction.confidence == 0.0
+        assert not prediction.has_a_prediction
+        assert not prediction.is_confident
+
+    def test_the_summary_says_what_to_do_instead_of_naming_a_role(self):
+        prediction = classify.predict("Nothing here at all.", set())
+        assert "reads like" not in prediction.summary
+        assert "skills section" in prediction.summary
+
+    def test_a_confident_prediction_still_reads_as_one(self):
+        prediction = classify._predict_profile(
+            {"Kubernetes", "CI/CD", "Terraform", "Prometheus", "Grafana", "Linux"}
+        )
+        assert prediction.summary == (
+            f"This resume reads like a {prediction.role} profile."
+        )
+
+    def test_a_near_tie_is_presented_as_a_tie(self):
+        prediction = classify.RolePrediction(
+            role="Backend Developer",
+            confidence=0.40,
+            backend="profile",
+            alternatives=[("Full Stack Developer", 0.39)],
+        )
+        assert not prediction.is_confident
+        assert "sits between" in prediction.summary
+
+    # --- S4.6b: keywords have to be able to tell roles apart ---------------
+
+    def test_keywords_prefer_the_distinctive_over_the_ubiquitous(self):
+        # Git and Docker appear in most role profiles, so they say nothing
+        # about which role a resume is. A skill with the same within-role
+        # weight but a narrower spread must rank above them.
+        profiles = classify._role_profiles()
+        spread = classify._roles_mentioning()
+        backend = profiles["Backend Developer"]
+        keywords = classify._role_keywords("Backend Developer", backend)
+
+        common = max(
+            (name for name in backend if name in keywords),
+            key=lambda name: spread[name],
+        )
+        rarer = [
+            name
+            for name in backend
+            if backend[name] >= backend[common] and spread[name] < spread[common]
+        ]
+        assert rarer, "no comparison available in the corpus"
+        for name in rarer:
+            assert name in keywords, name
+
+    def test_keyword_count_never_exceeds_the_cap(self):
+        for role, weights in classify._role_profiles().items():
+            keywords = classify._role_keywords(role, weights)
+            assert len(keywords) <= classify.ROLE_KEYWORD_COUNT
+            assert keywords <= set(weights)
+
+    # --- the trained backend, which no artifact on disk ever exercises -----
+
+    def test_falls_back_to_profiles_when_there_is_no_artifact(self):
+        classify._load_trained.cache_clear()
+        assert classify._load_trained() is None
+        assert classify.predict("Python developer", {"Python"}).backend == "profile"
+
+    def test_margins_become_comparable_confidences(self, monkeypatch):
+        # LinearSVC has no predict_proba, so decision_function margins are
+        # softmaxed by hand. Nothing on disk exercises this branch.
+        bundle = {
+            "vectorizer": _StubVectorizer(),
+            "model": _StubModel([2.0, 1.0, 0.0]),
+            "labels": ["Backend Developer", "Data Scientist", "QA Engineer"],
+        }
+        monkeypatch.setattr(classify, "_load_trained", lambda: bundle)
+        prediction = classify.predict("anything", {"Python"})
+
+        assert prediction.backend == "trained"
+        assert prediction.role == "Backend Developer"
+        assert 0 < prediction.confidence < 1
+        total = prediction.confidence + sum(s for _r, s in prediction.alternatives)
+        assert total == pytest.approx(1.0, abs=1e-3)
+
+    def test_a_trained_prediction_borrows_role_keywords(self, monkeypatch):
+        # The trained model knows nothing about the skill ontology, so the
+        # keywords ATS rule 7 needs have to come from the profiles.
+        bundle = {
+            "vectorizer": _StubVectorizer(),
+            "model": _StubModel([3.0, 1.0]),
+            "labels": ["DevOps Engineer", "QA Engineer"],
+        }
+        monkeypatch.setattr(classify, "_load_trained", lambda: bundle)
+        prediction = classify.predict("anything", set())
+        assert prediction.keywords
+        assert prediction.keywords <= set(classify._role_profiles()["DevOps Engineer"])
+
+    def test_a_broken_model_falls_back_instead_of_raising(self, monkeypatch):
+        class _Exploding:
+            def transform(self, documents):
+                raise RuntimeError("vectorizer vocabulary does not match")
+
+        bundle = {
+            "vectorizer": _Exploding(),
+            "model": _StubModel([1.0]),
+            "labels": ["Backend Developer"],
+        }
+        monkeypatch.setattr(classify, "_load_trained", lambda: bundle)
+        prediction = classify.predict("Python developer", {"Python", "FastAPI"})
+        assert prediction.backend == "profile"
 
 
 class TestEmbed:

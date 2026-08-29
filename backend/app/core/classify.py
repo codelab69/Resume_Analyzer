@@ -2,10 +2,11 @@
 
 TWO IMPLEMENTATIONS, SAME INTERFACE
 -----------------------------------
-"trained"   A TF-IDF + LinearSVC model saved by scripts/train_classifier.py
-            and loaded from artifacts/. This is the graded model - the one
-            that produces the accuracy, precision, recall, F1 and confusion
-            matrix in the project report.
+"trained"   A TF-IDF + LinearSVC model loaded from artifacts/. This is the
+            model to report accuracy, precision, recall, F1 and a confusion
+            matrix for. Its training script, scripts/train_classifier.py, is
+            not yet written, so no artifact exists yet and this backend has
+            never run outside its tests - see [[Role Classification]].
 
 "profile"   A nearest-profile classifier built at runtime from the job corpus
             in data/jobs.json. Each role profile is the set of skills its
@@ -38,7 +39,24 @@ log = logging.getLogger(__name__)
 CONFIDENT_MARGIN = 0.08
 
 # How many of a role's most characteristic skills to expose as keywords.
+#
+# "Characteristic" is doing real work in that sentence: ranking by raw
+# frequency puts Git, Docker and SQL at the top of nearly every role, because
+# nearly every role asks for them. Those are the keywords least able to tell
+# one role from another, and ATS rule 7 scores a resume on how many of them it
+# matches. `_role_keywords` therefore divides frequency-within-the-role by how
+# many roles mention the skill at all.
+#
+# With 26 postings this cap is inactive for 11 of the 13 roles - their whole
+# profile is shorter than 25 - so the ranking barely moves the numbers today.
+# It moves them as the corpus grows, which is what `scripts/import_jobs.py`
+# will be for - that importer is not yet written.
 ROLE_KEYWORD_COUNT = 25
+
+# A prediction below this confidence is not a prediction. The profile
+# classifier returns 0.0 when a resume shows no skill any role asks for, and
+# a score of zero must never be presented as an answer.
+MINIMUM_USEFUL_CONFIDENCE = 0.01
 
 
 @dataclass
@@ -52,7 +70,21 @@ class RolePrediction:
     keywords: set[str] = field(default_factory=set)
 
     @property
+    def has_a_prediction(self) -> bool:
+        """False when nothing matched and the role name is a placeholder.
+
+        `_predict_profile` returns General/0.0 for a resume showing no skill
+        any role asks for. That is the absence of an answer, not an answer.
+        """
+        return self.confidence >= MINIMUM_USEFUL_CONFIDENCE
+
+    @property
     def is_confident(self) -> bool:
+        if not self.has_a_prediction:
+            # An empty `alternatives` list used to reach the `return True`
+            # below, so the one case with no evidence at all was the one case
+            # reported as certain.
+            return False
         if not self.alternatives:
             return True
         return (self.confidence - self.alternatives[0][1]) >= CONFIDENT_MARGIN
@@ -60,6 +92,12 @@ class RolePrediction:
     @property
     def summary(self) -> str:
         """One sentence for the UI, honest about uncertainty."""
+        if not self.has_a_prediction:
+            return (
+                "No skills this tool recognises were found, so the resume could "
+                "not be matched to a role. Add a skills section listing the "
+                "tools and languages you have used."
+            )
         if self.is_confident:
             return f"This resume reads like a {self.role} profile."
         runner_up = self.alternatives[0][0]
@@ -86,8 +124,9 @@ def _load_trained():
     path = settings.artifacts_dir / "role_classifier.joblib"
     if not path.exists():
         log.info(
-            "No trained role classifier at %s. Using the profile classifier. "
-            "Train one with: python scripts/train_classifier.py", path
+            "No trained role classifier at %s. Using the profile classifier, "
+            "which is the only backend available until scripts/"
+            "train_classifier.py is written (not yet written).", path
         )
         return None
 
@@ -183,6 +222,36 @@ def _role_profiles() -> dict[str, dict[str, float]]:
     return profiles
 
 
+@lru_cache(maxsize=1)
+def _roles_mentioning() -> dict[str, int]:
+    """How many role profiles contain each skill. The denominator below."""
+    counts: dict[str, int] = {}
+    for weights in _role_profiles().values():
+        for name in weights:
+            counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def _role_keywords(role: str, weights: dict[str, float]) -> set[str]:
+    """The skills that most distinguish this role, not the ones it lists most.
+
+    Frequency alone ranks Git, Docker and SQL first for almost every role, and
+    a keyword shared by twelve roles cannot say anything about which one this
+    resume is. Dividing by the number of roles mentioning the skill demotes
+    exactly those - the same shape as an inverse document frequency, without
+    pretending to be one.
+    """
+    spread = _roles_mentioning()
+    total_roles = max(1, len(_role_profiles()))
+    ranked = sorted(
+        weights,
+        key=lambda name: -(
+            weights[name] * math.log(1 + total_roles / spread.get(name, 1))
+        ),
+    )
+    return set(ranked[:ROLE_KEYWORD_COUNT])
+
+
 def _predict_profile(resume_skills: set[str]) -> RolePrediction:
     """Score the resume's skills against every role profile.
 
@@ -211,9 +280,7 @@ def _predict_profile(resume_skills: set[str]) -> RolePrediction:
         return RolePrediction("General", 0.0, "profile")
 
     top_role, top_score = ranked[0]
-    keywords = set(
-        sorted(profiles[top_role], key=lambda k: -profiles[top_role][k])[:ROLE_KEYWORD_COUNT]
-    )
+    keywords = _role_keywords(top_role, profiles[top_role])
 
     return RolePrediction(
         role=top_role,
@@ -242,10 +309,7 @@ def predict(text: str, resume_skills: set[str]) -> RolePrediction:
         if not trained.keywords:
             profiles = _role_profiles()
             if trained.role in profiles:
-                bucket = profiles[trained.role]
-                trained.keywords = set(
-                    sorted(bucket, key=lambda k: -bucket[k])[:ROLE_KEYWORD_COUNT]
-                )
+                trained.keywords = _role_keywords(trained.role, profiles[trained.role])
         return trained
 
     return _predict_profile(resume_skills)

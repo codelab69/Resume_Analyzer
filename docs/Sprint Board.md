@@ -61,7 +61,7 @@ Everything ticked above was green at the same moment, on 2026-08-29:
 
 | Check | Result | Measured |
 |---|---|---|
-| `pytest` | **252 passed** in 2.4 s (120 at the start of Sprint 1, 233 before S4.5) | 2026-08-29 |
+| `pytest` | **268 passed** in 2.5 s (120 at the start of Sprint 1, 252 before S4.6) | 2026-08-29 |
 | `scripts/smoke_test.py` | passed, TOTAL 201 ms | 2026-08-29 |
 | `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed, on the transformer backend** | 2026-08-29 |
 | `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, notes empty | 2026-08-29 |
@@ -81,11 +81,11 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Thirteen defects have been found by verifying rather than by looking
-> S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a, S4.4b, S4.4c, S4.5a, S4.5b and
-> S4.5c were all found by *running* the thing being documented instead of trusting an
-> existing comment or a remembered number. None of them would have been caught by reading the code. Eight were
-> invisible to a green test suite, and one — S4.2a — was invisible *because* the code read
+> [!note] Sixteen defects have been found by verifying rather than by looking
+> S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a, S4.4b, S4.4c, S4.5a, S4.5b,
+> S4.5c, S4.6a, S4.6b and S4.6c were all found by *running* the thing being documented
+> instead of trusting an existing comment or a remembered number. None of them would have
+> been caught by reading the code. Ten were invisible to a green test suite, and one — S4.2a — was invisible *because* the code read
 > like a correct implementation: clear docstring, named constants, a comment marking the
 > important line, all of it describing an intention rather than the behaviour. That is the
 > argument for the "Evidence" line on every tick.
@@ -105,6 +105,9 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > | S4.5a — the ambiguity guard accepted every example it was written to reject | running the docstring's own three sentences through it | No - `surface == canonical` reads as exactly right until you remember English capitalises sentences |
 > | S4.5b — every fuzzy highlight pointed at the wrong characters | asserting a span slices back to its own surface | No - and the end-to-end check that asserts this was green, on the one fixture that cannot fail it |
 > | S4.5c — four documented examples had never been executed | running the doctests to check a claim | No - an unrun example looks identical to a passing one |
+> | S4.6a — a zero-confidence prediction was reported as certain | writing the module's first tests | No - `if not self.alternatives: return True` reads as a sensible default |
+> | S4.6b — role keywords were ranked by ubiquity, not distinctiveness | asking whether the code did what the comment said | Possibly, by someone who thought about what the ranking is for |
+> | S4.6c — the code named three scripts that had never existed | looking for one of them | Only by checking the path; three files and a log line all agreed |
 >
 > S4.3b, S4.4c and S4.5c are one defect three times, in three costumes: a count in the
 > README, a count in eleven vault files, four examples in docstrings. Prose that sits next
@@ -806,7 +809,86 @@ file that owns the behaviour, and every wikilink in it resolves or is itself on 
   > carelessness about numbers, it is **prose that sits next to code and is never run**.
   > The remedy has never once been "check more carefully"; it has been a test, three times.
 
-- [ ] **S4.6 — [[Role Classification]]** — the supervised model and the profile fallback
+- [x] **S4.6 — [[Role Classification]]** — the supervised model and the profile fallback
+  *Evidence 2026-08-29: every profile figure read out of the built profiles rather than from
+  `jobs.json` (26 postings, 13 roles, profile sizes 7–29, three roles with a single posting),
+  every score run on the fixtures, and both timings measured over 50 runs. Four rejected
+  alternatives, one of them — Jaccard instead of recall — rejected *for now* with the reason
+  and the Sprint 6 dependency stated rather than dismissed. A "known limits" section with
+  four measured entries, including a skill-stuffing case that still produces a confident
+  wrong answer. Writing it found S4.6a, S4.6b and S4.6c. `pytest` **268 passed** (252
+  before), 16 new tests.*
+
+- [x] **S4.6a — Defect: the one case with no evidence was the one case reported as certain** *(unplanned)*
+  Found by writing the first tests this module has ever had. `classify.py` is one of the six
+  pipeline stages, 251 lines, two backends — and had **no unit tests at all**. The only
+  assertion anywhere touching it was `assert strong.role.role`, that the role name is a
+  non-empty string.
+  **Cause:** `is_confident` returned `True` whenever `alternatives` was empty. The only path
+  producing an empty alternatives list is `_predict_profile`'s early return for a resume
+  showing no skill any role asks for — `General`, confidence **0.0**. So the single input the
+  classifier knew nothing about was the single input it announced as certain. `is_confident`
+  is serialised straight into the API response, and the sentence shown was *"This resume
+  reads like a General profile."* — "General" being a placeholder, not a role in the corpus.
+  **Fix:** `has_a_prediction` is false below `MINIMUM_USEFUL_CONFIDENCE`, `is_confident`
+  requires it, and that case gets its own summary telling the student what to do: no
+  recognised skills were found, add a skills section. The absence of an answer is not an
+  answer, and this is the output where saying so is most useful — a resume with no detectable
+  skills has a fixable problem, and naming a fake role hides it.
+  **AC:** a zero-confidence prediction is never confident and never names a role, while a
+  clear prediction and a near-tie both read exactly as before.
+  *Evidence 2026-08-29, run on both versions: empty resume — `is_confident` **True → False**,
+  summary **"reads like a General profile" → "No skills this tool recognises were found…"**.
+  Unchanged: sample resume Full Stack Developer **0.6667**, margin 0.19 over Data Scientist,
+  confident; `weak_resume.txt` Business Analyst **0.125** against Data Analyst 0.0769, margin
+  0.048, correctly reported as a tie. Nine clearly-backend skills still split
+  **0.3667 / 0.3636** and are still reported as undecided.*
+
+- [x] **S4.6b — Defect: the keywords least able to tell roles apart were ranked first** *(unplanned)*
+  Found by asking what "characteristic" meant in the comment above `ROLE_KEYWORD_COUNT`, and
+  checking whether the code did it.
+  **Cause:** the keywords were the role's skills sorted by weight — frequency *within* the
+  role, which says nothing about whether twelve other roles want the same thing. Git, Docker
+  and SQL rank near the top of nearly every profile precisely because nearly every role asks
+  for them. [[ATS Scoring]] rule 7 spends **15 of the 100 points** on how many of these a
+  resume matches, so the rule was measuring "mentions common tools" rather than "looks like
+  this role".
+  **Fix:** divide within-role weight by the number of roles mentioning the skill at all — the
+  shape of an inverse document frequency, without claiming to be one. Backend's top five goes
+  from Unit Testing, REST API, Code Review, Docker, CI/CD to Unit Testing, Code Review, REST
+  API, **Pytest, Flask**.
+  **AC:** a skill with the same within-role weight but a narrower spread outranks a ubiquitous
+  one, and the cap still holds.
+  *Evidence 2026-08-29, both rankings computed side by side: mean shared keywords per role
+  pair **1.72 → 1.45**; worst pair, Backend and Full Stack, **12 → 11**. ATS rule 7 on the
+  sample resume **unchanged at 15/15**, and the note says so rather than quoting a better row.
+  The effect is small for a measurable reason that is written down: with 26 postings, **11 of
+  the 13 profiles hold fewer than 25 skills**, so the cap selects nothing and the ranking is
+  inert for them. It stops being inert when the corpus grows.*
+
+- [x] **S4.6c — Defect: the code told users to run three scripts that had never existed** *(unplanned)*
+  Found by checking whether `scripts/train_classifier.py`, which the module docstring calls
+  the source of "the graded model", was there.
+  **Cause:** `app/` names four scripts and one of them exists. `train_classifier.py`,
+  `import_jobs.py` and `tune_weights.py` are all Sprint 6 items that have never been written,
+  and nothing in the code said so. The reader meets them in a **log line printed at every
+  boot** without an artifact, in two module docstrings, and — worst — in a user-facing
+  `FileNotFoundError` that fires when the job corpus is missing and offers a recovery path
+  that cannot be taken.
+  **Fix:** every mention now says *not yet written* on the spot, and
+  `TestScriptPathsInTheCode` enforces it: a `scripts/*.py` path named anywhere in `app/` must
+  either exist on disk or carry that marker **within 200 characters of the mention**, so one
+  disclaimer at the bottom of a file cannot excuse the rest. A second test checks the reverse
+  — a script that exists but no vault note mentions is a tool nobody will find. When S6.2,
+  S6.3 and S6.4 land the paths become real, the markers come out, and the test keeps holding
+  the rule.
+  **AC:** a path the code tells a user to run either works or admits it does not.
+  *Evidence 2026-08-29: three unmarked references before, zero after. The test found a
+  **fourth** on its first run — in a comment written half an hour earlier in this same story,
+  which is the best possible argument for having it. Mutation: removing "not yet written"
+  from the `matcher.py` docstring fails exactly
+  `test_every_script_the_code_names_exists_or_says_it_does_not`.*
+
 - [ ] **S4.7 — [[ATS Scoring]]** — the ten rules, their weights, and why they add to 100
 - [ ] **S4.8 — [[Job Matching]]** — the four signals and the weighted formula
 - [ ] **S4.9 — [[Job Recommendation]]** — retrieve-then-rerank, and BM25 written out longhand
