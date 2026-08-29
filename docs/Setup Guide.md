@@ -178,7 +178,7 @@ What a healthy machine reports:
 |---|---|
 | `smoke_test.py` | a full report, per-stage timings, ending `Smoke test passed.` |
 | `pytest -q` | `200 passed` |
-| `e2e_check.py` | `All end-to-end checks passed.` (30 checks) |
+| `e2e_check.py` | `All end-to-end checks passed.` (29 checks) |
 
 Then the frontend check: open the app, upload
 `backend/tests/fixtures/sample_resume.txt`. If a report renders with a score, the whole
@@ -279,7 +279,7 @@ Section 8 has the fix.
 > | Installed versions vs pinned versions | 16 of 16 exact, 0 mismatches |
 > | `pytest -q` | **184 passed** — the count on the day of that run; it is 200 now |
 > | `scripts/smoke_test.py` | passed |
-> | `scripts/e2e_check.py`, server run from that same venv | **all 30 passed** |
+> | `scripts/e2e_check.py`, server run from that same venv | **all 29 passed** |
 > | `GET /api/health` | `ok`, `semantic_backend: transformer` |
 >
 > This replaces an earlier caveat on this page, which said the pinned set resolved but

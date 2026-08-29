@@ -57,17 +57,21 @@ same bar every time.
 
 ## Last verified
 
-Everything ticked above was green at the same moment, on 2026-08-27:
+Everything ticked above was green at the same moment, on 2026-08-29:
 
-| Check | Result |
-|---|---|
-| `pytest` | **211 passed** in ~2.1 s (120 at the start of this session) |
-| `scripts/smoke_test.py` | passed |
-| `scripts/e2e_check.py` against live uvicorn | **all 30 checks passed, on the transformer backend** |
-| `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, notes empty |
-| `npm run build` | clean, no warnings, largest chunk 368 kB |
-| All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 30/30 |
-| Vault link integrity | 237 links checked: 153 resolve, 84 point at notes still on this board, **0 broken**. One genuinely broken anchor was found and fixed — `[[Data Model#3. Deletion actually deletes]]` had been written without the section number, which Obsidian does not match |
+| Check | Result | Measured |
+|---|---|---|
+| `pytest` | **233 passed** in 2.2 s (120 at the start of Sprint 1, 211 before S4.4) | 2026-08-29 |
+| `scripts/smoke_test.py` | passed, TOTAL 204 ms | 2026-08-29 |
+| `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed, on the transformer backend** | 2026-08-29 |
+| `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, notes empty | 2026-08-29 |
+| `npm run build` | clean, no warnings, 1052 modules, largest chunk `charts` 368 kB, 4.0 s | 2026-08-29 |
+| All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 29/29 | 2026-08-27, not re-run since |
+| Vault link integrity | 237 links checked: 153 resolve, 84 point at notes still on this board, **0 broken**. One genuinely broken anchor was found and fixed — `[[Data Model#3. Deletion actually deletes]]` had been written without the section number, which Obsidian does not match | 2026-08-27, not re-run since |
+
+The right-hand column exists because the two bottom rows were not re-run today and saying
+so is cheaper than a reader assuming they were. The e2e figure in this table used to read
+30; it had never been true — see S4.4c.
 
 > [!important] The headline change on 2026-08-27
 > The semantic path is live. `/api/health` reports `ok` rather than `degraded` for the
@@ -77,14 +81,14 @@ Everything ticked above was green at the same moment, on 2026-08-27:
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Seven defects have been found by verifying rather than by looking
-> S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a and S4.3b were all found by *running* the thing being
-> documented instead of trusting an existing comment or a remembered number. None of them
-> would have been caught by reading the code. Two were invisible to a green test suite,
-> and one — S4.2a — was invisible *because* the code read like a correct implementation:
-> clear docstring, named constants, a comment marking the important line, all of it
-> describing an intention rather than the behaviour. That is the argument for the
-> "Evidence" line on every tick.
+> [!note] Ten defects have been found by verifying rather than by looking
+> S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a, S4.4b and S4.4c were all found by
+> *running* the thing being documented instead of trusting an existing comment or a
+> remembered number. None of them would have been caught by reading the code. Five were
+> invisible to a green test suite, and one — S4.2a — was invisible *because* the code read
+> like a correct implementation: clear docstring, named constants, a comment marking the
+> important line, all of it describing an intention rather than the behaviour. That is the
+> argument for the "Evidence" line on every tick.
 >
 > | Defect | Found while | Would code review have caught it? |
 > |---|---|---|
@@ -95,6 +99,13 @@ Everything ticked above was green at the same moment, on 2026-08-27:
 > | S4.2a — the two-column fix did not exist | generating a PDF that had two columns in it | No — the comment said it was handled |
 > | S4.3a — acronyms and job titles opened sections | running each guard against the line it rejects | No — the docstring listed four traps and there were six |
 > | S4.3b — README stated a count that was never true | re-counting the data files | Only by re-counting; it looked plausible |
+> | S4.4a — a documented date format parsed to nothing, and every closed range lost a month | typing the three formats the comment named into the function | No — the comment listed three examples and looked like proof |
+> | S4.4b — four fields matched a string that was not the field | running each pattern against its negative control | Unlikely — `m\.?\s?e\.?` under `re.I` reads as correct until you notice it spells **me** |
+> | S4.4c — the vault stated an end-to-end count that was never true | running the verification bar instead of copying the last evidence line | Only by counting; eleven places agreed with each other |
+>
+> S4.3b and S4.4c are the same defect twice, four stories apart, which is the whole
+> argument: the remedy for a number written from memory is not resolving to remember
+> harder, it is a test that fails. Both now have one.
 
 ---
 
@@ -157,7 +168,7 @@ and run a user-testing session with real students.
   **AC:** the app produces a full report with every optional package unloadable.
   *Evidence 2026-08-27: `pytest` 130 passed (10 new regression tests, including one
   that simulates the exact `WinError 126` and one that breaks all six at once);
-  `smoke_test.py` passes; `e2e_check.py` **all 30 checks pass** against a live
+  `smoke_test.py` passes; `e2e_check.py` **all 29 checks pass** against a live
   server, reporting `embeddings=hashing` rather than failing.*
 
   > [!note] Why this mattered more than it looks
@@ -194,7 +205,7 @@ and run a user-testing session with real students.
   | Installed versions vs pinned versions | **16 of 16 exact, 0 mismatches** |
   | `pytest -q` | **184 passed** |
   | `scripts/smoke_test.py` | passed |
-  | `scripts/e2e_check.py`, against a server from this same venv | **all 30 passed** |
+  | `scripts/e2e_check.py`, against a server from this same venv | **all 29 passed** |
   | `GET /api/health` | `ok`, `semantic_backend: transformer` |
 
   *Four packages had drifted a major or minor version — FastAPI 0.115 → 0.141,
@@ -308,7 +319,7 @@ and run a user-testing session with real students.
   **AC:** a normal boot, with the network available and no environment variables set,
   makes zero requests to huggingface.co and still reports `transformer`.
   *Evidence 2026-08-27: boot **14 s → 6 s**, huggingface.co requests **33 → 0**, health
-  still `ok | transformer`, all 30 e2e checks still pass. `pytest` 184 passed, including
+  still `ok | transformer`, all 29 e2e checks still pass. `pytest` 184 passed, including
   three new `TestModelLoadingIsCacheFirst` tests that use a stand-in for
   sentence-transformers so they run on any machine and never touch the network.
   Mutation-tested: removing `local_files_only=True` failed two of the three by name;
@@ -319,7 +330,7 @@ and run a user-testing session with real students.
   **AC:** `pytest` green, `e2e_check.py` all pass, and the semantic sub-score for a
   matching JD is measurably higher than it was on the hashing backend. Both numbers
   recorded in [[Decision Log]] so the improvement is evidenced, not claimed.
-  *Evidence 2026-08-27: `pytest` **184 passed**; `e2e_check.py` **all 30 checks passed**
+  *Evidence 2026-08-27: `pytest` **184 passed**; `e2e_check.py` **all 29 checks passed**
   against a live server reporting `embeddings=transformer`. The A/B was run properly —
   two servers, same fixtures, one forced onto each backend — rather than compared against
   a remembered number. Semantic sub-score on a matching JD **0.19 → 0.39**, match score
@@ -535,7 +546,7 @@ file that owns the behaviour, and every wikilink in it resolves or is itself on 
   empty. Both over-correction guards tested — a custom heading after prose and one straight
   after a list are still detected. `pytest` **211 passed** (200 before). All four decisions
   mutation-tested, each failing exactly the right tests by name. Sample resume unchanged at
-  ATS 95, `e2e_check.py` all 30 pass, API `sections` no longer leaks `OTHER:`.*
+  ATS 95, `e2e_check.py` all 29 pass, API `sections` no longer leaks `OTHER:`.*
 
 - [x] **S4.3b — Defect: the README stated a count that was never true** *(unplanned)*
   **Cause:** the README claimed **133 section-heading variants**; `headings.json` yields
@@ -551,7 +562,133 @@ file that owns the behaviour, and every wikilink in it resolves or is itself on 
   **AC:** the four counts in the README match the data, and a test fails if they diverge.
   *Evidence 2026-08-27: four new tests, green. Mutation-tested by restoring `133` — one
   test fails, by name.*
-- [ ] **S4.4 — [[Entity Extraction]]** — contact details, and interval merging for experience duration
+- [x] **S4.4 — [[Entity Extraction]]** — contact details, and interval merging for experience duration
+  *Evidence 2026-08-29: every claim in the note was checked against the code before it was
+  written, and every "before" column in it is measured output rather than recollection —
+  the pre-S4.4 commit was checked out into a second worktree and the same two fixtures put
+  through both versions side by side. Writing it is what found S4.4a and S4.4b below.
+  Includes four rejected alternatives, one of them (naive summation) rejected on
+  measurement, and a "what this gives up, deliberately" section that states two accepted
+  false positives — a one-word city and a job title can both still be read as the name —
+  rather than leaving them to be discovered. `pytest` **232 passed** (211 before), 21 new
+  tests, `TestEntities` now 31.*
+
+- [x] **S4.4a — Defect: the experience duration was wrong in two directions at once** *(unplanned)*
+  Found by typing the three date formats named in the comment above `DATE_RANGE` into the
+  function, instead of trusting that a comment listing three examples had been run on three.
+  **Cause, part one — a documented format matched nothing.** The comment promised
+  `"Jun 2023 - Present"`, `"06/2023 to 08/2024"`, `"2021-2025"`. The side pattern accepted a
+  month *word* before the year, or nothing, and no digits at all — so the numeric middle
+  form returned **zero ranges**. Four numeric spellings were tried and all four found
+  nothing. A resume that dates its work numerically reported **no experience at all**, which
+  reaches `matcher.fit_score` as an eligibility of zero.
+  **Cause, part two — every closed range lost its last month.** `months` and
+  `total_experience_months` each computed `end - start` on month indices with the end
+  treated as exclusive, so `Jun 2025 - Aug 2025` returned **2** for June, July and August.
+  Not a rounding artefact: one month lost per merged interval, so the error grows with the
+  number of separate roles — worst for exactly the student with several short internships.
+  **Fix:** `_DATE_SIDE` now takes a month word *or* two digits glued to the year by a slash
+  or a hyphen, `_parse_date_side` reads that numeric month, and an impossible one (`13/2023`)
+  is dropped rather than quietly becoming March. `DateRange.span()` returns a half-open
+  `[start, end)` pair and both the duration property and the interval merge read it — one
+  measurement, the same argument as
+  [[Decision Log#D6 — Reading order is recovered from word geometry, not taken from the library]],
+  so a duration shown next to a role and the total underneath it cannot disagree. Half-open
+  spans also make two ranges that merely touch merge into one period instead of counting the
+  shared month twice. Tightening the side pattern had a second effect: it no longer swallows
+  the separator in front of the year, so `raw` is `2022 - 2026` rather than `, 2022 - 2026`,
+  and the compensating strip that had been added for that became dead code and was deleted.
+  **AC:** all three documented formats parse, a closed range counts its final month, and the
+  merged total agrees with the durations it is made of.
+  *Evidence 2026-08-29, every number run on both versions: `06/2023 to 08/2024` **0 ranges
+  → 1**, 15 months. Sample resume **12 months / 1.0 y → 14 / 1.2**, and its first raw range
+  `, 2022 - 2026` → `2022 - 2026`. `weak_resume.txt` **1 range → 2**, 23 months → 28.
+  `Jun 2023 - Present` 38 → 39. The ATS score on the sample resume is unchanged, and the note
+  says so rather than quoting a better-looking row: the JD asks for one year and the ratio
+  was already clamped at 1.0, so this fix matters at the boundary and for anyone with several
+  short roles, not on this fixture.*
+
+- [x] **S4.4b — Defect: four fields matched a string that was not the field** *(unplanned)*
+  Found by running each pattern against the string it is supposed to handle, and against the
+  negative-control fixture, rather than against the example written in its own comment.
+  **The name was a sentence.** "Looks like a name" allowed dots for initials (`K. Anandan`)
+  and required *more than one word*. `Rahul`, alone on line one of `weak_resume.txt`, was
+  rejected for being one word — so the loop walked past the real name and kept going until
+  `I did my engineering.` passed: five words made of letters and a dot. That sentence was
+  printed as the candidate's name in the report, in the profile block of
+  `/api/resume/upload`, and at the top of the frontend's first screen.
+  **"me" was a master's degree.** `M.E` is written `m\.?\s?e\.?` so that `ME` and `M.E.` both
+  count; under `re.I` it also matches the word **me**. `DEGREE_LEVEL["M.E"]` is 4, and
+  `academic = education_text or text` means any resume whose EDUCATION section was not
+  detected has its whole body scanned — so "Feel free to contact me" awarded a master's to a
+  candidate with no degree at all, and `fit_score` gives the full eligibility component to
+  anyone at or above the level the job asks for. `B.E` did the same with the word **be**.
+  **The phone most Indian resumes print was invisible.** The pattern wanted ten unbroken
+  digits, so `98765 43210` was not a phone number. Rule 1 of [[ATS Scoring]] scores email,
+  phone and profile link a third each: a complete header scored **6.67/10** and told the
+  student to add a contact detail that was already on the page.
+  **The GitHub link kept the following full stop.** A `.` in the username character class
+  never helped — GitHub usernames cannot contain dots — and it turned
+  `"Portfolio at github.com/kiran."` into the link `github.com/kiran.`, which looks right in
+  a report and only fails when somebody clicks it. `LINKEDIN` never had the dot.
+  **Fix:** a name may end in an initial but not in a full stop on a whole word, and one word
+  counts as a name provided it is capitalised. A bare two-letter degree abbreviation must be
+  uppercase to count, and every occurrence is checked rather than only the first, so a stray
+  lowercase `be` cannot shadow a real `B.E.` further down; anything carrying a dot, a space
+  or more letters passes exactly as before, because `BE CSE, Anna University` is a real way
+  to write it. The phone pattern allows one space or hyphen after the fifth digit and nothing
+  else — the class is `[ \-]` rather than `\s` on purpose, because `\s` matches a newline and
+  would staple the last five digits of one line to the first five of the next. The dot is
+  gone from the GitHub class.
+  **AC:** the negative-control fixture reports a name rather than a sentence, the two English
+  words award no degree, a spaced phone number is found, and a link at the end of a sentence
+  does not keep the full stop.
+  *Evidence 2026-08-29, run on both versions: `weak_resume.txt` name **`I did my
+  engineering.` → `Rahul`**. `"Willing to be relocated"` **`['B.E']` → `[]`**, `"Feel free to
+  contact me."` **`['M.E']` → `[]`** — while `BE CSE, Anna University` still returns `['B.E']`
+  and `be able to work. B.E. Computer` still finds the real one. Spaced phone **`None` →
+  `98765 43210`**, and ATS rule 1 on that header **6.67/10 → 10/10**. `github.com/kiran.` →
+  `github.com/kiran`. Nine negative phone cases asserted, including that the separator does
+  not cross a line break and that a twelve-digit Aadhaar still yields nothing.*
+
+  > [!note] The mutation run is what made this honest
+  > Removing the sentence guard broke **no test**. Once one-word names are accepted, `Rahul`
+  > wins on line one and the sentence is never reached — so the fixture that exposed the bug
+  > does not hold the fix in place. The guard needed a header where no name line survives at
+  > all (`Rahul Kumar (2026 batch)`, rejected for the bracket, with the sentence beneath it).
+  > A fix whose mutation breaks nothing is a fix nobody can prove is load-bearing, and this
+  > one nearly shipped as decoration.
+
+- [x] **S4.4c — Defect: the vault stated an end-to-end count that was never true** *(unplanned)*
+  Found by running the project's own verification bar for the S4.4 tick rather than copying
+  the previous evidence line. `e2e_check.py` printed **29 PASS lines**; every note that
+  mentions it said **30**.
+  **Cause:** the same one as S4.3b above, one story later. The
+  number was written once from memory, and then eleven places copied each other:
+  [[Setup Guide]] twice, [[Decision Log]] once, this board seven times, and the header of
+  `requirements.txt` — where it sits inside the "every version below was measured, not
+  chosen" block, which is exactly the claim it undermines. `git log` on the script shows it
+  unchanged since the first commit, so 30 was never right, not even briefly. Nothing broke:
+  a wrong count in a document is invisible until somebody counts, and the evidence lines
+  that carried it read as freshly measured because they were dated.
+  **Fix:** all eleven corrected to 29, and — because S4.3b already established that a
+  convention which depends on remembering to check is not a control — a test now asserts it.
+  `test_e2e_check_count_matches_the_script` parses the script with `ast` and counts the
+  `check()` call sites, then reads the count out of [[Setup Guide]] and compares. It uses
+  the source rather than a run, so it needs no server and belongs in the normal suite;
+  `TestDocumentedCounts` gained it and its docstring now covers the vault, not only the
+  README.
+  **AC:** the stated count and the script's actual assertion count cannot disagree without
+  a red test.
+  *Evidence 2026-08-29: `e2e_check.py` against live uvicorn — **29 checks, all passed**.
+  `ast` finds **29** `check()` call sites. `pytest` **233 passed**, 232 before this test. Mutation: putting `30 checks` back into
+  [[Setup Guide]] fails exactly `test_e2e_check_count_matches_the_script`
+  (`backend/tests/test_core.py:464`) and nothing else, so the test holds this fix and only
+  this fix. Deleting the sentence from the guide fails it too, with the message that names
+  the note. `grep` for the old number across the vault, the README and `backend/` now
+  returns only the docstring that explains the defect.*
+
+
 - [ ] **S4.5 — [[Skill Matching]]** — longest-match-wins n-gram indexing and the ambiguity problem
 - [ ] **S4.6 — [[Role Classification]]** — the supervised model and the profile fallback
 - [ ] **S4.7 — [[ATS Scoring]]** — the ten rules, their weights, and why they add to 100

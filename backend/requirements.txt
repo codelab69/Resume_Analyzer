@@ -12,7 +12,7 @@
 # EVERY VERSION BELOW WAS MEASURED, NOT CHOSEN
 # --------------------------------------------
 # These pins are the exact set that passed `pytest` (184 tests),
-# `scripts/smoke_test.py` and `scripts/e2e_check.py` (30 checks) on the
+# `scripts/smoke_test.py` and `scripts/e2e_check.py` (29 checks) on the
 # transformer backend on 2026-08-27. They are not aspirational: an earlier
 # version of this file pinned a set nobody had ever run, and the working
 # virtualenv had drifted a full major version ahead of it on four packages.

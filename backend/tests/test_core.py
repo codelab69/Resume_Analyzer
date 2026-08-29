@@ -9,6 +9,7 @@ skills, embeddings.
 
 from __future__ import annotations
 
+import ast
 import json
 import pathlib
 import re
@@ -384,7 +385,7 @@ class TestSegment:
 
 
 class TestDocumentedCounts:
-    """The numbers in the README must be the numbers in the data files.
+    """The numbers the documentation states must be the numbers in the code.
 
     The README states four counts, and the project's own working agreement is
     that counts are read out of the data rather than remembered. One of them was
@@ -392,8 +393,13 @@ class TestDocumentedCounts:
     which is the point - a wrong number in the front-door document is invisible
     until someone checks, and nobody checks a number that looks plausible.
 
-    This test is the check. It fails when the data and the README disagree,
-    which is the only time either of them is wrong.
+    A second one was not, either. The vault said `e2e_check.py` runs 30 checks,
+    in eleven separate places, and the script has never contained more than 29
+    `check()` calls - one number written from memory and then copied ten times.
+    That is what a convention enforced by remembering looks like after a month.
+
+    These tests are the check. They fail when the documentation and the thing
+    it describes disagree, which is the only time either of them is wrong.
     """
 
     README = pathlib.Path(__file__).resolve().parents[2] / "README.md"
@@ -430,6 +436,32 @@ class TestDocumentedCounts:
             if line.strip() and not line.startswith("#")
         ]
         assert self._claimed(r"\*\*(\d+) action verbs\*\*") == len(verbs)
+
+    def test_e2e_check_count_matches_the_script(self):
+        # Counted from the source rather than from a run, so this test needs no
+        # server. `check()` is only ever called at module scope inside the
+        # script's own functions, so every call site is one printed assertion.
+        script = (
+            pathlib.Path(__file__).resolve().parents[1] / "scripts" / "e2e_check.py"
+        )
+        tree = ast.parse(script.read_text(encoding="utf-8"))
+        call_sites = sum(
+            1
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "check"
+        )
+
+        guide = (
+            pathlib.Path(__file__).resolve().parents[2] / "docs" / "Setup Guide.md"
+        )
+        stated = re.search(
+            r"`All end-to-end checks passed\.` \((\d+) checks\)",
+            guide.read_text(encoding="utf-8"),
+        )
+        assert stated, "[[Setup Guide]] no longer states an end-to-end check count"
+        assert int(stated.group(1)) == call_sites
 
 
 class TestHeadingShapedContent:
@@ -595,13 +627,78 @@ class TestEntities:
         assert facts.highest_degree == "M.Tech"
         assert facts.degree_level == DEGREE_MTECH_LEVEL
 
+    # -- S4.4b: the numeric date format the comment promised ----------------
+
+    def test_parses_the_three_documented_range_formats(self):
+        # The comment above DATE_RANGE listed these three. The middle one
+        # matched nothing at all until this test was written.
+        for text, expected_ranges in [
+            ("Jun 2023 - Present", 1),
+            ("06/2023 to 08/2024", 1),
+            ("2021-2025", 1),
+        ]:
+            assert len(entities.extract_date_ranges(text)) == expected_ranges, text
+
+    def test_a_numeric_month_is_read_not_just_skipped(self):
+        # Finding the range is not enough - the month has to come out of it,
+        # or "06/2023 to 08/2024" is counted as two full calendar years.
+        found = entities.extract_date_ranges("06/2023 to 08/2024")[0]
+        assert (found.start_month, found.end_month) == (6, 8)
+        assert found.months == 15
+
+    def test_an_impossible_numeric_month_is_ignored_not_reinterpreted(self):
+        # "13/2023" is not March. Dropping the month is right; silently
+        # reading the "3" out of "13" is not.
+        found = entities.extract_date_ranges("13/2023 - 08/2024")[0]
+        assert found.start_month is None
+
+    # -- S4.4a: two degree abbreviations spell English words ----------------
+
+    def test_the_word_be_is_not_a_bachelor_of_engineering(self):
+        # "b.?\s?e.?" under re.I matches the word "be". Any resume saying
+        # "willing to be relocated" was awarded a degree it did not have.
+        assert entities._extract_degrees("Willing to be relocated") == []
+
+    def test_the_word_me_is_not_a_master_of_engineering(self):
+        # Worse than the B.E case: M.E is level 4, so "contact me" gave a
+        # candidate with no degree at all a master's, and with it the full
+        # eligibility sub-score in matcher.fit_score.
+        facts = entities.extract_entities(
+            "Feel free to contact me.", education_text="Feel free to contact me."
+        )
+        assert facts.degrees == []
+        assert facts.degree_level == 0
+
+    def test_a_capitalised_abbreviation_still_counts(self):
+        # The guard is capitalisation, not the dot - plenty of resumes write
+        # "BE CSE" with no punctuation at all.
+        assert entities._extract_degrees("BE CSE, Anna University") == ["B.E"]
+        assert entities._extract_degrees("B.E. Computer Science") == ["B.E"]
+
+    def test_a_stray_lowercase_match_does_not_hide_a_real_degree(self):
+        # Every occurrence is checked, not just the first. A "be" earlier in
+        # the line must not shadow the "B.E." that follows it.
+        assert entities._extract_degrees("be able to work. B.E. Computer Science") == ["B.E"]
+
     def test_merges_overlapping_date_ranges(self):
-        # Two internships running at the same time are 3 months of experience,
-        # not 6. Naive summation badly overstates a student's experience.
+        # Two internships over the same summer are one summer of experience,
+        # not two. Naive summation badly overstates a student's experience.
+        # Jun-Sep inclusive is four months; the second internship sits inside
+        # it and adds nothing.
         ranges = entities.extract_date_ranges(
             "Jun 2024 - Sep 2024 at one company. Jul 2024 - Sep 2024 at another."
         )
-        assert entities.total_experience_months(ranges) == 3
+        assert sum(period.months for period in ranges) == 7, "naive sum"
+        assert entities.total_experience_months(ranges) == 4
+
+    def test_raw_range_carries_no_leading_separator(self):
+        # `raw` is returned by the API and shown to the candidate. The start
+        # group has to allow leading separators to find the range at all -
+        # they must not survive into the string a person reads.
+        ranges = entities.extract_date_ranges(
+            "B.E. Computer Science, Anna University, 2022 - 2026"
+        )
+        assert ranges[0].raw == "2022 - 2026"
 
     def test_counts_present_as_running_until_today(self):
         ranges = entities.extract_date_ranges("Jan 2020 - Present")
@@ -622,6 +719,94 @@ class TestEntities:
         assert facts.experience_years < 3, (
             "Experience is being inflated by education date ranges"
         )
+
+    # -- S4.4a: the end month of a closed range is worked, not skipped -------
+
+    def test_a_closed_range_counts_its_last_month(self):
+        # "Jun 2025 - Aug 2025" is June, July and August. Treating the end
+        # month as exclusive lost one month from every dated role on the page.
+        ranges = entities.extract_date_ranges("Backend Intern Jun 2025 - Aug 2025")
+        assert ranges[0].months == 3
+        assert entities.total_experience_months(ranges) == 3
+
+    def test_a_year_only_range_runs_january_to_december(self):
+        ranges = entities.extract_date_ranges("Analyst 2023 - 2024")
+        assert ranges[0].months == 24
+
+    def test_touching_ranges_do_not_double_count_the_shared_boundary(self):
+        # Jan-Jun then Jul-Dec is the whole year once, not thirteen months.
+        ranges = entities.extract_date_ranges(
+            "Role A Jan 2023 - Jun 2023. Role B Jul 2023 - Dec 2023."
+        )
+        assert entities.total_experience_months(ranges) == 12
+
+    def test_duration_and_merged_total_agree(self):
+        # `months` and `total_experience_months` used to compute the same
+        # arithmetic twice, in two places, and could drift apart. They now
+        # read one `span()`. On a single range the two must be identical.
+        for text in ["Jun 2025 - Aug 2025", "2023 - 2024", "Jan 2020 - Present"]:
+            ranges = entities.extract_date_ranges(text)
+            assert ranges[0].months == entities.total_experience_months(ranges), text
+
+    # -- S4.4a: a sentence is not a name, and one word can be ---------------
+
+    def test_a_sentence_in_the_header_is_not_read_as_a_name(self, weak_resume_text):
+        # The weak resume's name is "Rahul" on line one. Before the guard, the
+        # dot allowed for initials let "I did my engineering." through instead,
+        # and that string was printed as the candidate's name in the report.
+        segmented = segment.segment(weak_resume_text)
+        facts = entities.extract_entities(weak_resume_text, preamble=segmented.preamble)
+        assert facts.name == "Rahul"
+
+    def test_a_sentence_is_not_a_name_when_no_name_line_survives(self):
+        # The mutation run found that the weak resume alone does not hold the
+        # sentence guard in place: once one-word names are accepted, "Rahul" on
+        # line one wins before any sentence is reached. This is the header that
+        # needs the guard - the real name line carries a bracketed batch year,
+        # which the character test rejects, so the sentence below it is the
+        # first candidate the loop actually considers.
+        header = "Rahul Kumar (2026 batch)" + "\n" + "I did my engineering."
+        assert entities._extract_name(header, None) is None
+
+    def test_initials_may_end_in_a_full_stop(self):
+        assert entities._extract_name("Dr. K. Anandan", None) == "Dr. K. Anandan"
+        assert entities._extract_name("Kiran A.", None) == "Kiran A."
+
+    def test_a_lowercase_label_is_not_a_one_word_name(self):
+        # One-word names are accepted, so the header block's stray lines have
+        # to be kept out some other way. Capitalisation is that test.
+        header = "python\nKiran Anandan"
+        assert entities._extract_name(header, None) == "Kiran Anandan"
+
+    # -- S4.4a: contact patterns --------------------------------------------
+
+    def test_github_link_does_not_swallow_a_sentence_full_stop(self):
+        facts = entities.extract_entities("Portfolio at github.com/kiran.")
+        assert facts.github == "github.com/kiran"
+
+    def test_phone_written_with_a_space_is_found(self):
+        # "98765 43210" is how the number is printed on most Indian resumes.
+        # Missing it costs 3.33 of the 10 points in ATS rule 1.
+        assert entities._first(entities.PHONE, "Mobile: 98765 43210") == "98765 43210"
+        assert entities._first(entities.PHONE, "+91 98765 43210") == "+91 98765 43210"
+
+    def test_phone_does_not_bite_a_chunk_out_of_a_longer_number(self):
+        assert entities._first(entities.PHONE, "Aadhaar 123456789012") is None
+        assert entities._first(entities.PHONE, "Roll number 1234567890") is None
+
+    def test_phone_separator_does_not_cross_a_line_break(self):
+        # The separator class is "[ -]", not "\s". With "\s" the pattern would
+        # staple the last five digits of one line to the first five of the next.
+        two_lines = "score 98765" + chr(10) + "43210 requests"
+        assert entities._first(entities.PHONE, two_lines) is None
+
+    def test_has_full_contact_needs_all_three(self):
+        complete = entities.Entities(
+            email="a@b.com", phone="9876543210", github="github.com/a"
+        )
+        assert complete.has_full_contact
+        assert not entities.Entities(email="a@b.com", phone="9876543210").has_full_contact
+        assert not entities.Entities(email="a@b.com", github="github.com/a").has_full_contact
 
 
 DEGREE_MTECH_LEVEL = entities.DEGREE_LEVEL["M.Tech"]

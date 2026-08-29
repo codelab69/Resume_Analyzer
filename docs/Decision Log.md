@@ -104,7 +104,7 @@ who ran `pip install -r requirements.txt` got the package, no model, a silent fa
 to the heuristic, and one INFO line explaining why if they were reading logs.
 
 It was also not installed in the working virtualenv at all, and the full suite (184
-tests) plus all 30 end-to-end checks pass without it. So the pin was describing a
+tests) plus all 29 end-to-end checks pass without it. So the pin was describing a
 configuration nobody had run.
 
 Two commands together, or neither, is the honest shape. The heuristic returns the same
