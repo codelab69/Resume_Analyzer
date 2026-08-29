@@ -245,6 +245,11 @@ Embedding every posting on every request does not scale — at 20,000 postings t
 corpus, and is very good at *"does this posting even mention the right things"*. Only
 then does the expensive model run, on a set small enough to be free.
 
+"Milliseconds" is now measured rather than assumed: **78 ms at 20,000 postings**, after
+S4.9b removed two pieces of per-document work that did not depend on the document. It was
+154 ms before. And at the corpus's actual size of 26 postings, stage 1 selects everything —
+the two stages are architecture for a corpus this project does not have yet.
+
 **BM25 is implemented in this repository, not imported.** Forty lines, and it means the
 ranking function can be explained and cited rather than being an opaque package call:
 

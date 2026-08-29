@@ -49,6 +49,10 @@ BM25_B = 0.75
 RERANK_POOL = 200
 DEFAULT_RESULTS = 10
 
+# How many times a resume's skills are repeated in the BM25 query, to weight
+# them above incidental resume vocabulary.
+SKILL_QUERY_REPEATS = 3
+
 
 @dataclass
 class JobMatch:
@@ -103,6 +107,13 @@ class Bm25Index:
     doc_lengths: list[int]
     average_length: float
     total_docs: int
+    # Per-document term counts, precomputed. `score` used to build this dict
+    # on every call, for every document, on every request - the one genuinely
+    # O(document length) step in the ranking, rebuilt each time inside an
+    # object whose whole purpose is to have precomputed it. Harmless at 26
+    # postings and 154 ms of pure Python at the 20,000 this design is written
+    # for, which is the scale the module docstring uses to justify two stages.
+    term_frequencies: list[dict[str, int]] = field(default_factory=list)
 
     def idf(self, term: str) -> float:
         """Inverse document frequency, BM25's probabilistic variant.
@@ -124,25 +135,65 @@ class Bm25Index:
                     idf(t) * ( f(t,d) * (k1 + 1) ) /
                              ( f(t,d) + k1 * (1 - b + b * |d| / avgdl) )
         """
+        return self._score_with(self._query_weights(query_terms), doc_index)
+
+    def _query_weights(self, query_terms: list[str]) -> dict[str, float]:
+        """Each distinct query term's IDF, multiplied by how often it is asked.
+
+        The original loop walked the raw term list and called `idf` once per
+        term *per document*, so a 40-term query over 20,000 postings evaluated
+        800,000 logarithms of numbers that do not depend on the document at
+        all. Multiplying a distinct term's IDF by its query count is exactly
+        equivalent - the repetition is how `recommend` weights skills - and it
+        is computed once.
+        """
+        counts: dict[str, int] = {}
+        for term in query_terms:
+            counts[term] = counts.get(term, 0) + 1
+        return {term: self.idf(term) * count for term, count in counts.items()}
+
+    def _score_with(self, weights: dict[str, float], doc_index: int) -> float:
         document = self.documents[doc_index]
         if not document:
             return 0.0
 
-        frequencies: dict[str, int] = {}
-        for token in document:
-            frequencies[token] = frequencies.get(token, 0) + 1
-
+        frequencies = self.term_frequencies[doc_index]
         length_norm = BM25_K1 * (
             1 - BM25_B + BM25_B * self.doc_lengths[doc_index] / self.average_length
         )
 
         total = 0.0
-        for term in query_terms:
+        for term, weight in weights.items():
             frequency = frequencies.get(term, 0)
             if frequency == 0:
                 continue
-            total += self.idf(term) * (frequency * (BM25_K1 + 1)) / (frequency + length_norm)
+            total += weight * (frequency * (BM25_K1 + 1)) / (frequency + length_norm)
         return total
+
+    def rank(self, query_terms: list[str], doc_indices: list[int]) -> list[tuple[int, float]]:
+        """Score many documents against one query, IDF computed once.
+
+        `score` remains the readable single-document form and is what the
+        tests and the note quote; this is the same arithmetic with the
+        document-independent half hoisted out of the loop.
+        """
+        weights = self._query_weights(query_terms)
+        return [(index, self._score_with(weights, index)) for index in doc_indices]
+
+
+def build_query(resume_skills: list[str], resume_text: str) -> list[str]:
+    """The BM25 query: the resume's words, with its skills weighted up.
+
+    Skills are repeated `SKILL_QUERY_REPEATS` times so they outweigh
+    incidental resume vocabulary. The repetition has to be of the *list*:
+    `" ".join(skills) * 3` leaves no space at the seam, producing
+    "...AWSMachine Learning...", so the first and last skills were repeated
+    once instead of three times and a nonsense term was invented at each join.
+
+        >>> build_query(["Go", "Rust"], "built things")
+        ['go', 'rust', 'go', 'rust', 'go', 'rust', 'built', 'things']
+    """
+    return content_tokens(" ".join(resume_skills * SKILL_QUERY_REPEATS + [resume_text]))
 
 
 @lru_cache(maxsize=1)
@@ -156,6 +207,13 @@ def _bm25_index() -> Bm25Index:
         for term in set(document):
             doc_frequencies[term] = doc_frequencies.get(term, 0) + 1
 
+    frequencies: list[dict[str, int]] = []
+    for document in documents:
+        counts: dict[str, int] = {}
+        for token in document:
+            counts[token] = counts.get(token, 0) + 1
+        frequencies.append(counts)
+
     lengths = [len(document) for document in documents]
     average = sum(lengths) / len(lengths) if lengths else 1.0
 
@@ -166,6 +224,7 @@ def _bm25_index() -> Bm25Index:
         doc_lengths=lengths,
         average_length=max(1.0, average),
         total_docs=max(1, len(documents)),
+        term_frequencies=frequencies,
     )
 
 
@@ -242,11 +301,18 @@ def recommend(
     # --- stage 1: BM25 ---------------------------------------------------
     # The query is the resume's skills plus its own words. Skills are repeated
     # three times to weight them above incidental resume vocabulary.
-    query = content_tokens(" ".join(resume_skills) * 3 + " " + resume_text)
+    #
+    # The repetition has to be of the list, not of the joined string.
+    # `" ".join(skills) * 3` produces "...AWSMachine Learning..." - no space at
+    # the seam - so the first and last skills were repeated once instead of
+    # three times and a nonsense term was invented at each join. The two skills
+    # a resume lists first and last got a third of the weight the comment
+    # promises them.
+    query = build_query(resume_skills, resume_text)
     if not query:
         return []
 
-    scored = [(position, index.score(query, position)) for position in allowed]
+    scored = index.rank(query, allowed)
     scored.sort(key=lambda pair: -pair[1])
     pool = [pair for pair in scored[:RERANK_POOL] if pair[1] > 0]
 

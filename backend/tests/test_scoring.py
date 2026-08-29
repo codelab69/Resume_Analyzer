@@ -597,6 +597,85 @@ class TestBm25:
         for term in list(index.doc_frequencies)[:200]:
             assert index.idf(term) >= 0
 
+    def test_term_frequencies_are_precomputed_not_rebuilt(self):
+        # `Bm25Index` exists to precompute. It did not precompute the one
+        # genuinely O(document length) step, rebuilding a term-count dict for
+        # every document on every request.
+        index = recommend._bm25_index()
+        assert len(index.term_frequencies) == len(index.documents)
+        for document, counts in zip(index.documents, index.term_frequencies):
+            assert sum(counts.values()) == len(document)
+            assert set(counts) == set(document)
+
+    def test_scoring_reads_the_precomputed_table_not_the_document(self):
+        # The test above proves the table is built. This proves it is used.
+        # Poison one document's counts: if `score` still rebuilds them from
+        # `documents`, the poisoning has no effect and this test fails.
+        index = recommend._bm25_index()
+        term = next(iter(index.term_frequencies[0]))
+        original = dict(index.term_frequencies[0])
+        try:
+            before = index.score([term], 0)
+            index.term_frequencies[0] = {**original, term: original[term] * 50}
+            after = index.score([term], 0)
+        finally:
+            index.term_frequencies[0] = original
+        assert after > before
+
+    def test_rank_and_score_are_the_same_arithmetic(self):
+        # `rank` hoists the document-independent half of the loop out. It has
+        # to be the same number, not merely a similar one.
+        index = recommend._bm25_index()
+        query = ["python", "docker", "python", "fastapi"]
+        indices = list(range(len(index.documents)))
+        one_by_one = [index.score(query, i) for i in indices]
+        in_bulk = [value for _i, value in index.rank(query, indices)]
+        assert in_bulk == pytest.approx(one_by_one, abs=1e-12)
+
+    def test_a_repeated_query_term_still_counts_more_than_once(self):
+        # The repetition IS the weighting, so deduplicating query terms while
+        # hoisting the IDF would have silently removed it.
+        index = recommend._bm25_index()
+        once = index.score(["python"], 0)
+        thrice = index.score(["python", "python", "python"], 0)
+        assert thrice == pytest.approx(3 * once)
+
+
+class TestBm25Query:
+    """`" ".join(skills) * 3` does not repeat the skills.
+
+    It repeats the joined string, and there is no space at the seam, so
+    "Machine Learning ... AWS" repeated three times reads
+    "...AWSMachine Learning...". The first and last skills were therefore
+    repeated once instead of three times - a third of the weight the comment
+    promises them - and a nonsense term was invented at each join.
+    """
+
+    SKILLS = ["Machine Learning", "Docker", "AWS"]
+
+    def _counts(self, skills_list, text=""):
+        from collections import Counter
+
+        return Counter(recommend.build_query(skills_list, text))
+
+    def test_every_skill_is_repeated_the_same_number_of_times(self):
+        counts = self._counts(self.SKILLS)
+        assert counts["machine"] == recommend.SKILL_QUERY_REPEATS
+        assert counts["docker"] == recommend.SKILL_QUERY_REPEATS
+        assert counts["aws"] == recommend.SKILL_QUERY_REPEATS
+
+    def test_no_term_is_invented_at_the_seam(self):
+        # "awsmachine" appeared in the query and in no posting anywhere.
+        assert "awsmachine" not in self._counts(self.SKILLS)
+
+    def test_the_resume_text_is_still_in_the_query(self):
+        counts = self._counts(["Docker"], "Deployed containers to production")
+        assert counts["containers"] == 1
+        assert counts["docker"] == recommend.SKILL_QUERY_REPEATS
+
+    def test_a_single_skill_is_not_glued_to_itself(self):
+        assert self._counts(["Go"])["go"] == recommend.SKILL_QUERY_REPEATS
+
 
 # ---------------------------------------------------------------------------
 # Pipeline

@@ -48,7 +48,7 @@ same bar every time.
 | [[#Sprint 1 — Ship the paperwork]] | Repo is handable to another developer | Complete |
 | [[#Sprint 2 — Turn the accuracy up]] | Transformer path proven, not assumed | **Complete** — unblocked and measured 2026-08-27 |
 | [[#Sprint 3 — Architecture notes]] | The "how it fits together" half of the vault | Complete |
-| [[#Sprint 4 — Algorithm notes]] | Every algorithm written up for the viva | In progress |
+| [[#Sprint 4 — Algorithm notes]] | Every algorithm written up for the viva | **Complete** — 9 notes, 13 defects, 2026-08-29 |
 | [[#Sprint 5 — Guides and reference]] | A stranger can set it up unaided | In progress |
 | [[#Sprint 6 — Maintenance tooling]] | The data files can be grown safely | Not started |
 | [[#Sprint 7 — Release hardening]] | Demo-day proof | Not started |
@@ -61,7 +61,7 @@ Everything ticked above was green at the same moment, on 2026-08-29:
 
 | Check | Result | Measured |
 |---|---|---|
-| `pytest` | **303 passed** in 2.5 s (120 at the start of Sprint 1, 283 before S4.8) | 2026-08-29 |
+| `pytest` | **311 passed** in 2.5 s (120 at the start of Sprint 1, 303 before S4.9) | 2026-08-29 |
 | `scripts/smoke_test.py` | passed, TOTAL 201 ms | 2026-08-29 |
 | `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed, on the transformer backend** | 2026-08-29 |
 | `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, notes empty | 2026-08-29 |
@@ -81,11 +81,11 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Twenty-three defects have been found by verifying rather than by looking
+> [!note] Twenty-five defects have been found by verifying rather than by looking
 > S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a, S4.4b, S4.4c, S4.5a, S4.5b,
-> S4.5c, S4.6a-c, S4.7a-d, S4.8a, S4.8b and S4.8c were all found by *running* the thing
+> S4.5c, S4.6a-c, S4.7a-d, S4.8a-c, S4.9a and S4.9b were all found by *running* the thing
 > being documented instead of trusting an existing comment or a remembered number. None of
-> them would have been caught by reading the code. Seventeen were invisible to a green test
+> them would have been caught by reading the code. Nineteen were invisible to a green test
 > suite, two of them on fixtures that could not have failed, and one — S4.2a — was invisible
 > *because* the code read
 > like a correct implementation: clear docstring, named constants, a comment marking the
@@ -117,6 +117,8 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > | S4.8a — the lexical signal's IDF weighted nothing | working out what the formula evaluates to at N=2 | Unlikely - the formula is the textbook one, and only the N makes it inert |
 > | S4.8b — the company's age was a hard experience requirement | writing out the sentences a real posting contains | No - "smallest stated requirement" reads as careful, and is, about the wrong thing |
 > | S4.8c — "Bachelor's degree" was no degree requirement | asking what a posting writes rather than what a resume writes | No - and no fixture in the corpus could have failed it |
+> | S4.9a — the BM25 query never repeated the skills it meant to weight | printing the query the comment describes | Possibly - `" ".join(x) * 3` is a seam bug, and seams are what review is for |
+> | S4.9b — the precomputed index rebuilt its expensive table per call | testing the docstring's premise at the scale the docstring names | No - it is correct code, in the wrong place, inside an object named for caching |
 >
 > S4.3b, S4.4c and S4.5c are one defect three times, in three costumes: a count in the
 > README, a count in eleven vault files, four examples in docstrings. Prose that sits next
@@ -1074,7 +1076,62 @@ file that owns the behaviour, and every wikilink in it resolves or is itself on 
   `B.E. Computer Science` unchanged at 3, `M.Tech` at 4, and `No formal qualification needed`
   still 0. Corpus-wide detection unchanged at 3 of 26, which is the point.*
 
-- [ ] **S4.9 — [[Job Recommendation]]** — retrieve-then-rerank, and BM25 written out longhand
+- [x] **S4.9 — [[Job Recommendation]]** — retrieve-then-rerank, and BM25 written out longhand
+  *Evidence 2026-08-29: BM25 written out with both parameters justified, the IDF variant
+  explained against the classic Robertson one, and the two-stage premise **measured at the
+  scale it is written for** rather than asserted. Four known limits stated, the first of
+  which is that stage 1 selects everything at 26 postings and the architecture is currently
+  doing no work. Writing it found S4.9a and S4.9b. `pytest` **311 passed** (303 before), 8
+  new tests. Sprint 4 is complete: nine algorithm notes, thirteen defects.*
+
+- [x] **S4.9a — Defect: the skills the BM25 query meant to weight were never repeated** *(unplanned)*
+  Found by printing the query the comment describes instead of reading the comment.
+  **Cause:** `" ".join(resume_skills) * 3`. That repeats the *joined string*, and there is no
+  space at the seam, so `"Machine Learning Docker AWS"` tripled reads
+  `"...Docker AWSMachine Learning Docker AWS..."`. The first and last skills were therefore
+  repeated **once instead of three times** — a third of the weight the comment promises them —
+  and a term existing in no posting anywhere (`awsmachine`) was invented at each join. The
+  skills a resume lists first are usually the ones it leads with.
+  **Fix:** repeat the list, not the string. Extracted as `build_query` so it can be tested,
+  carrying a doctest, with `SKILL_QUERY_REPEATS` a named constant instead of a literal `3`
+  buried in an expression.
+  **AC:** every skill is weighted identically, and no term is invented at a seam.
+  *Evidence 2026-08-29, run on both versions, sample resume with 19 skills: first skill token
+  `machine` **2 → 4**, last skill token `aws` **2 → 4**, a middle skill `docker` unchanged at
+  5, and `awsmachine` **2 → 0**. Mutation restoring the old join fails all four
+  `TestBm25Query` tests plus `test_every_docstring_example_runs_and_passes` — the third time
+  the S4.5c doctest control has caught a regression in a module it was not written for.*
+
+- [x] **S4.9b — Defect: the precomputed index did not precompute the expensive part** *(unplanned)*
+  Found by testing the module docstring's own premise — "BM25 … runs in milliseconds over the
+  full corpus" — at the 20,000 postings the same docstring uses to justify having two stages.
+  **Cause:** `Bm25Index`'s docstring says it is "built once and cached" because "rebuilding on
+  every request would dominate the response time". `score()` then opened by building a
+  term-count dict for the document — the one genuinely O(document length) step — on every
+  call, for every document, on every request. And `self.idf(term)` was evaluated once per term
+  **per document**: a 40-term query over 20,000 postings computes 800,000 logarithms of
+  numbers that do not depend on the document at all.
+  **Fix:** `term_frequencies` is precomputed in `_bm25_index`, and `rank()` hoists the IDF
+  table out of the per-document loop. `score()` remains the readable single-document form and
+  a test asserts the two produce identical numbers.
+  **The hoist had to preserve the repetition**, because the repetition *is* the weighting
+  S4.9a had just repaired. Multiplying each distinct term's IDF by its count in the query is
+  exactly equivalent; deduplicating — the obvious way to hoist — would have silently deleted
+  it again in the same commit.
+  **AC:** the stated premise holds at the stated scale, and the arithmetic is unchanged.
+  *Evidence 2026-08-29, scoring the whole corpus once, measured on synthesised corpora:
+  **26 postings 0.2 → 0.1 ms; 2,000 15.8 → 8.6 ms; 20,000 154.4 → 77.6 ms.** `score()` and
+  `rank()` agree to within 1e-12 on every posting.*
+
+  > [!note] One mutation here breaks nothing, and that is the honest answer
+  > Calling `score()` in a loop instead of `rank()` produces **identical numbers**. It is
+  > purely slower, and a test suite cannot assert "this is faster" without becoming flaky on
+  > a busy machine. What holds it is `test_rank_and_score_are_the_same_arithmetic`: the two
+  > are proven interchangeable, so choosing between them is a performance decision recorded
+  > in [[Job Recommendation]] and nowhere else. The other performance half *is* held —
+  > `test_scoring_reads_the_precomputed_table_not_the_document` poisons one document's counts
+  > and requires the score to move, which fails if `score` rebuilds them.
+
 
 **AC for each:** states the problem, the approach taken, at least one alternative that
 was rejected and why, and the worked numbers for one real example.
