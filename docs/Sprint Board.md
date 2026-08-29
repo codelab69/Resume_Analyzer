@@ -61,7 +61,7 @@ Everything ticked above was green at the same moment, on 2026-08-29:
 
 | Check | Result | Measured |
 |---|---|---|
-| `pytest` | **311 passed** in 2.5 s (120 at the start of Sprint 1, 303 before S4.9) | 2026-08-29 |
+| `pytest` | **322 passed** in 2.6 s (120 at the start of Sprint 1, 311 before S5.3) | 2026-08-29 |
 | `scripts/smoke_test.py` | passed, TOTAL 201 ms | 2026-08-29 |
 | `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed, on the transformer backend** | 2026-08-29 |
 | `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, notes empty | 2026-08-29 |
@@ -81,10 +81,10 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Twenty-six defects have been found by verifying rather than by looking
+> [!note] Twenty-seven defects have been found by verifying rather than by looking
 > S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a-c, S4.5a-c, S4.6a-c, S4.7a-d,
-> S4.8a-c, S4.9a, S4.9b and S5.2a were all found by *running* the thing being documented
-> instead of trusting an existing comment or a remembered number. None of them would have
+> S4.8a-c, S4.9a, S4.9b, S5.2a and S5.3a were all found by *running* the thing being
+> documented instead of trusting an existing comment or a remembered number. None of them would have
 > been caught by reading the code. Nineteen were invisible to a green test suite, two of them
 > on fixtures that could not have failed, and one — S4.2a — was invisible *because* the
 > code read like a correct implementation: clear docstring, named constants, a comment marking the
@@ -119,6 +119,7 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > | S4.9a — the BM25 query never repeated the skills it meant to weight | printing the query the comment describes | Possibly - `" ".join(x) * 3` is a seam bug, and seams are what review is for |
 > | S4.9b — the precomputed index rebuilt its expensive table per call | testing the docstring's premise at the scale the docstring names | No - it is correct code, in the wrong place, inside an object named for caching |
 > | S5.2a — three more scripts named in files the control did not scan | reading `.env.example` line by line while documenting deployment | No - the control existed, passed, and had the wrong scope |
+> | S5.3a — `React` matched "able to react quickly" | the validator written one story earlier, on its first run | No - S4.5a fixed the guard and left the membership list alone |
 >
 > S4.3b, S4.4c and S4.5c are one defect three times, in three costumes: a count in the
 > README, a count in eleven vault files, four examples in docstrings. Prose that sits next
@@ -1193,7 +1194,45 @@ was rejected and why, and the worked numbers for one real example.
   comment continuation (`not\n# yet written`) and the marker has to be one phrase within 200
   characters of the mention. Rewrapped. Unmarked references across the whole backend: **3 → 0**.*
 
-- [ ] **S5.3 — [[Extending the Ontology]]** — adding skills, headings and verbs safely
+- [x] **S5.3 — [[Extending the Ontology]]** — adding skills, headings and verbs safely
+  **AC:** a maintainer can add to any of the three files and know, before committing, whether
+  they have broken something.
+  *Evidence 2026-08-29: the note is built on a table of what the loader **refuses** (exactly
+  one thing — a colliding alias) against what it **accepts silently** (five things), every row
+  of which was run against the real loader rather than reasoned about. Includes a worked
+  example that adds a real skill end to end — Redux, added because S5.3a's fix exposed that
+  it was missing — and follows the count cascade through all twelve places that said "169
+  skills", **eight of which are current-state claims that had to change and four of which are
+  dated evidence that must not**. That distinction is the most useful thing in the note and
+  it is stated as a rule: an evidence line is a historical claim, superseded by a later one,
+  never edited. Also covers headings (a variant under two sections wins silently) and verbs
+  (why a gerund is an error), and states three limits including that the validator cannot tell
+  you a skill is *missing*.*
+
+- [x] **S5.3a — Defect: `React` matched ordinary English, and so did `Ruby`** *(unplanned)*
+  Found by `scripts/validate_skills.py`, on its first run, in shipped data.
+  **Cause:** `React` is an ordinary English verb and was not in `skills._AMBIGUOUS_NAMES`, so
+  the credibility guard never ran for it. **"Able to react quickly to changing
+  requirements"** — a stock line in the soft-skills section of a student resume — reported
+  React as a skill. So did "I react well under pressure." `Ruby` did the same for a gemstone.
+  This is the S4.5a family and it survived that story because S4.5a fixed the **guard** and
+  not the **membership list**. A tool that checks membership is what catches the next one,
+  which is the argument for having built it.
+  **Fix:** both added to `_AMBIGUOUS_NAMES` with a comment naming the English usage, exactly
+  as the existing nine entries are written. Adding `Redux` to the ontology came out of the
+  same run: with React guarded, the line "React and Redux on the frontend" matched nothing,
+  because React is sentence-initial there and its only neighbour was a skill the ontology did
+  not have.
+  **AC:** the English usages match nothing; every real usage still matches.
+  *Evidence 2026-08-29, run on both versions: `Able to react quickly…` **['React'] → []**,
+  `I react well under pressure.` **['React'] → []**, `She wore a ruby necklace`
+  **['Ruby'] → []**. Unchanged: `Built the dashboard in React`, `Skills: React, Node.js`,
+  `- React`, `Frontend: React`, `Experience with React Native`, `Ruby on Rails developer`,
+  `Ruby, Python, Go`. And newly working: `React and Redux on the frontend` **['React'] →
+  ['React', 'Redux']**. Ontology **169 → 170 skills**, 436 → 438 keys;
+  `TestDocumentedCounts` went red on the addition exactly as S4.3b designed it to, and the
+  eight current-state counts were updated while the four dated ones were left alone.*
+
 - [ ] **S5.4 — [[Troubleshooting]]** — symptom → cause → fix, seeded from every bug hit during the build
 - [ ] **S5.5 — [[Glossary]]** — the terms this vault uses, defined once
 - [x] **S5.6a — [[Decision Log]] exists and covers today's decisions**
@@ -1220,10 +1259,23 @@ was rejected and why, and the worked numbers for one real example.
 
 **Goal:** the data files can be grown by the next person without breaking the app.
 
-- [ ] **S6.1 — `scripts/validate_skills.py`**
+- [x] **S6.1 — `scripts/validate_skills.py`** *(pulled forward, out of sprint order)*
   **AC:** detects duplicate canonical names, aliases colliding across skills, empty
   alias lists, and unknown category values. Exits non-zero on any finding so it can
   gate a commit.
+  **Done before S5.3 on purpose.** [[Extending the Ontology]] is a note about how to edit
+  these files safely, and the safe way is "run the validator". Writing that sentence while
+  the validator did not exist would have produced a fifth `not yet written` marker in a note
+  whose entire subject is the tool. The dependency runs the other way round from the board.
+  *Evidence 2026-08-29: every check was written against a mutation that was actually run
+  through the real loader first, to confirm the bad edit really is accepted silently. Goes
+  beyond the AC with three more findings that came out of those runs — a name wider than the
+  lookup window (indexed and unreachable), an empty name (counted in `index.size`, so every
+  stated skill total goes wrong), and a name that is an ordinary English word. Validates all
+  three ontology files despite the name, because running three scripts to check three files
+  is how one of them stops being run. **11 tests**, four mutations each failing the test that
+  names it. On the shipped data: **0 errors, 44 warnings, exit 0** — after S5.3a below.*
+
 
 - [ ] **S6.2 — `scripts/train_classifier.py`**
   **AC:** trains the role classifier from the job corpus, reports held-out accuracy,

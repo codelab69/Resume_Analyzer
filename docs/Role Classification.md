@@ -254,7 +254,7 @@ holding the rule.
   have profiles built from a single job ad, so every weight is 1.0 and the profile is one
   recruiter's opinion. Predictions for those roles are as narrow as that ad.
 - **Weighted recall does not penalise breadth.** A resume listing skills it does not have
-  scores well on whichever role those skills cover. All 169 skills at once gives **1.0 on
+  scores well on whichever role those skills cover. All 170 skills at once gives **1.0 on
   every role**, which the margin check correctly reports as no answer — but half the ontology
   gives **Cloud Engineer at 0.857, reported as confident**. A precision term would fix it and
   would also penalise genuinely broad candidates; choosing between those needs labelled pairs,

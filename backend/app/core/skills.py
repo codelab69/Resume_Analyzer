@@ -99,6 +99,8 @@ _AMBIGUOUS_NAMES = {
     "spark",    # "spark innovation"
     "excel",    # "excel at communication"
     "cv",       # curriculum vitae, not Computer Vision
+    "react",    # "able to react quickly to changing requirements"
+    "ruby",     # a gemstone, and a name
 }
 
 # Fuzzy pass configuration.

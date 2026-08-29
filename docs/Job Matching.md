@@ -32,7 +32,7 @@ each one **failing in a different direction**:
 | Signal | Weight | Catches | Misses |
 |---|---:|---|---|
 | `S_sem` meaning | 0.40 | paraphrase, "built REST APIs" ≈ "designed web services" | tool names it has never seen |
-| `S_skill` overlap | 0.30 | the must-haves, by name | phrasing outside the 169-skill ontology |
+| `S_skill` overlap | 0.30 | the must-haves, by name | phrasing outside the 170-skill ontology |
 | `S_lex` keywords | 0.20 | what real ATS software actually does | synonyms, entirely |
 | `S_fit` eligibility | 0.10 | hard gates — years, degree | anything about ability |
 

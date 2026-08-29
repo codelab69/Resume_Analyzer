@@ -207,7 +207,7 @@ return nothing.
   "version": "…",
   "environment": "development",
   "components": {
-    "skills": "169 skills",
+    "skills": "170 skills",
     "action_verbs": "235 verbs",
     "fuzzy_matching": "ready",
     "embeddings": "hashing",

@@ -170,6 +170,9 @@ pytest -q
 
 # 3. With uvicorn running in the other terminal — the real HTTP path
 python scripts/e2e_check.py
+
+# 4. Are the three data files well-formed? (no server needed)
+python scripts/validate_skills.py
 ```
 
 What a healthy machine reports:
@@ -177,8 +180,9 @@ What a healthy machine reports:
 | Check | Expect |
 |---|---|
 | `smoke_test.py` | a full report, per-stage timings, ending `Smoke test passed.` |
-| `pytest -q` | `200 passed` |
+| `pytest -q` | **no failures.** The count was 200 when this guide was written and is 322 today; it goes up every story, so the number is not the thing to check |
 | `e2e_check.py` | `All end-to-end checks passed.` (29 checks) |
+| `validate_skills.py` | `Ontology is valid.` and a warning count |
 
 Then the frontend check: open the app, upload
 `backend/tests/fixtures/sample_resume.txt`. If a report renders with a score, the whole
@@ -325,6 +329,7 @@ Copy this and tick as you go.
 **Proof it works:**
 
 - [ ] `python scripts/smoke_test.py` → `Smoke test passed.`
+- [ ] `python scripts/validate_skills.py` → `Ontology is valid.`
 - [ ] `pytest -q` → `200 passed`
 - [ ] `uvicorn app.main:app --port 8000` starts, `/docs` opens in a browser
 - [ ] `python scripts/e2e_check.py` → `All end-to-end checks passed.`

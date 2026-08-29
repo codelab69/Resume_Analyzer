@@ -140,7 +140,7 @@ And the ranges counted come from EXPERIENCE and PROJECTS only, never the whole d
 
 ### Skill matching · [[Skill Matching]]
 
-A **longest-match-wins n-gram index** over 169 skills and all their aliases. The document
+A **longest-match-wins n-gram index** over 170 skills and all their aliases. The document
 is tokenised once, then n-grams are looked up from longest to shortest, and consumed
 tokens are never reused. So "Machine Learning" wins over "Learning", and "Node.js" is not
 read as "Node".

@@ -21,8 +21,8 @@ Owned by `backend/app/core/skills.py`, with the ontology in `backend/data/skills
 
 ## The problem
 
-Find every skill mentioned in a resume, where "every skill" means 169 canonical names
-written 436 different ways, and "mentioned" has to survive:
+Find every skill mentioned in a resume, where "every skill" means 170 canonical names
+written 438 different ways, and "mentioned" has to survive:
 
 - **aliases** — `sklearn`, `scikit learn`, `Scikit-Learn` are one skill
 - **phrases inside phrases** — `Machine Learning` contains `Learning`; `Natural Language
@@ -50,11 +50,11 @@ alias becomes a key, normalised to lowercase with trailing dots removed.
 
 | | Count |
 |---|---:|
-| Canonical skills | **169** |
-| Lookup keys (names + aliases) | **436** |
-| Aliases alone | 267 |
-| One-token keys | 231 |
-| Two-token keys | 177 |
+| Canonical skills | **170** |
+| Lookup keys (names + aliases) | **438** |
+| Aliases alone | 268 |
+| One-token keys | 232 |
+| Two-token keys | 178 |
 | Three-token keys | 28 |
 | Longest key, in tokens | **3** |
 

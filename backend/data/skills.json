@@ -23,8 +23,9 @@
     "  This ships with a curated technology list. To grow it to full coverage,",
     "  download the ESCO skills taxonomy (free, ec.europa.eu/esco) and merge",
     "  the 'skill' concepts in with category 'practice'. Run",
-    "  scripts/validate_skills.py afterwards - not yet written; when it exists it",
-    "  aliases that collide across entries, which silently break matching."
+    "  scripts/validate_skills.py afterwards. It catches duplicate names, aliases",
+    "  that collide across entries, categories the UI cannot group, names longer",
+    "  than the lookup window, and names that are ordinary English words."
   ],
 
   "skills": [
@@ -51,6 +52,7 @@
     {"name": "CSS", "category": "language", "aliases": ["css3"]},
 
     {"name": "React", "category": "framework", "aliases": ["react js", "reactjs", "react.js"]},
+    {"name": "Redux", "category": "framework", "aliases": ["redux toolkit"]},
     {"name": "Next.js", "category": "framework", "aliases": ["nextjs", "next js"]},
     {"name": "Vue.js", "category": "framework", "aliases": ["vue", "vuejs", "vue js"]},
     {"name": "Angular", "category": "framework", "aliases": ["angularjs", "angular js"]},

@@ -1085,6 +1085,152 @@ class TestDoctests:
         assert attempted == written
 
 
+class TestOntologyValidator:
+    """`scripts/validate_skills.py` catches what the loader accepts silently.
+
+    The loader raises on exactly one bad edit - an alias claimed by two
+    entries. Every other way of breaking the ontology is accepted and then
+    misbehaves a long way from the line that caused it, which is what this
+    script exists for. Each case below was run against the real loader first
+    to confirm it really is accepted silently.
+
+    It found a live defect on its first run: `React` is an ordinary English
+    word and was not in `_AMBIGUOUS_NAMES`, so "Able to react quickly to
+    changing requirements" reported React as a skill.
+    """
+
+    @staticmethod
+    def _run(skills_entries=None, headings=None, verbs=None):
+        """Run the validator over temporary data and return (exit code, output)."""
+        import contextlib
+        import importlib
+        import io
+        import json
+        import shutil
+        import sys
+        import tempfile
+
+        root = pathlib.Path(__file__).resolve().parents[1]
+        sys.path.insert(0, str(root / "scripts"))
+        module = importlib.import_module("validate_skills")
+        importlib.reload(module)
+
+        with tempfile.TemporaryDirectory() as directory:
+            data = pathlib.Path(directory)
+            real = root / "data"
+            shutil.copy(real / "skills.json", data / "skills.json")
+            shutil.copy(real / "headings.json", data / "headings.json")
+            shutil.copy(real / "action_verbs.txt", data / "action_verbs.txt")
+
+            if skills_entries is not None:
+                payload = json.loads((data / "skills.json").read_text(encoding="utf-8"))
+                payload["skills"].extend(skills_entries)
+                (data / "skills.json").write_text(json.dumps(payload), encoding="utf-8")
+            if headings is not None:
+                payload = json.loads((data / "headings.json").read_text(encoding="utf-8"))
+                payload.update(headings)
+                (data / "headings.json").write_text(json.dumps(payload), encoding="utf-8")
+            if verbs is not None:
+                existing = (data / "action_verbs.txt").read_text(encoding="utf-8")
+                (data / "action_verbs.txt").write_text(
+                    existing + "\n" + "\n".join(verbs) + "\n", encoding="utf-8"
+                )
+
+            module.SKILLS_FILE = data / "skills.json"
+            module.HEADINGS_FILE = data / "headings.json"
+            module.VERBS_FILE = data / "action_verbs.txt"
+            module.errors.clear()
+            module.warnings.clear()
+
+            captured = io.StringIO()
+            argv = sys.argv
+            sys.argv = ["validate_skills.py", "--quiet"]
+            try:
+                with contextlib.redirect_stdout(captured):
+                    code = module.main()
+            finally:
+                sys.argv = argv
+                skills.load_index.cache_clear()
+        return code, captured.getvalue()
+
+    def test_the_shipped_ontology_is_valid(self):
+        code, output = self._run()
+        assert code == 0, output
+
+    def test_a_duplicate_canonical_name_is_an_error(self):
+        # The loader accepts this: the second entry's category silently
+        # overwrites the first's and the aliases merge into one bucket.
+        code, output = self._run(
+            [{"name": "Python", "category": "tool", "aliases": ["python-lang"]}]
+        )
+        assert code == 1
+        assert "duplicate canonical name" in output
+
+    def test_an_unknown_category_is_an_error(self):
+        code, output = self._run(
+            [{"name": "Welding", "category": "trades", "aliases": ["arc welding"]}]
+        )
+        assert code == 1
+        assert "unknown category" in output
+
+    def test_a_name_wider_than_the_lookup_window_is_an_error(self):
+        # Indexed, and unreachable: `_exact_pass` never tries an n-gram wider
+        # than MAX_PHRASE_TOKENS, so this key can never be looked up.
+        code, output = self._run(
+            [{"name": "One Two Three Four Five Six", "category": "tool", "aliases": []}]
+        )
+        assert code == 1
+        assert "can never match" in output
+
+    def test_an_empty_name_is_an_error(self):
+        code, output = self._run([{"name": "  ", "category": "tool", "aliases": []}])
+        assert code == 1
+        assert "empty name" in output
+
+    def test_an_english_word_not_guarded_as_ambiguous_is_an_error(self):
+        # This is the check that found React.
+        code, output = self._run(
+            [{"name": "Chef", "category": "devops", "aliases": ["chef infra"]}]
+        )
+        assert code == 1
+        assert "_AMBIGUOUS_NAMES" in output
+
+    def test_a_colliding_alias_is_an_error(self):
+        code, output = self._run(
+            [{"name": "Fake", "category": "tool", "aliases": ["py"]}]
+        )
+        assert code == 1
+        assert "claimed by both" in output
+
+    def test_a_heading_variant_owned_by_two_sections_is_an_error(self):
+        # Whichever section is read last wins, silently, and every resume
+        # using that heading lands in the wrong section.
+        code, output = self._run(headings={"PROJECTS": ["projects", "work experience"]})
+        assert code == 1
+        assert "listed under both" in output
+
+    def test_a_gerund_verb_is_an_error(self):
+        # The file's own header rules them out: rule 5 exists to catch the
+        # weakening that a gerund does to a bullet.
+        code, output = self._run(verbs=["managing"])
+        assert code == 1
+        assert "gerund" in output
+
+    def test_a_duplicate_verb_is_an_error(self):
+        code, output = self._run(verbs=["achieved"])
+        assert code == 1
+        assert "more than once" in output
+
+    def test_a_skill_with_no_aliases_is_only_a_warning(self):
+        # 44 of the shipped entries have none. It is worth surfacing and it is
+        # not a reason to fail a commit.
+        code, output = self._run(
+            [{"name": "Terraform Cloud", "category": "devops", "aliases": []}]
+        )
+        assert code == 0
+        assert "has no aliases" in output
+
+
 class TestScriptPathsInTheCode:
     """A script path in an instruction is a promise that the script is there.
 

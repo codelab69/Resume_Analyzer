@@ -36,7 +36,7 @@ student it belongs to.
 | **Skill gaps** | The skills the posting wants that the resume does not evidence, ranked by how much the posting leans on them |
 | **Recommendations** | Ranked openings from the built-in corpus, each with a plain-language reason |
 
-The seed data ships with the project: **169 skills** across 10 categories,
+The seed data ships with the project: **170 skills** across 10 categories,
 **26 job postings** across 13 categories, **124 section-heading variants** across
 13 canonical sections, and **235 action verbs**.
 
