@@ -255,5 +255,18 @@ def warmup() -> dict[str, str]:
     except Exception as exc:
         status["jobs"] = f"failed: {exc}"
 
+    # Added in S6.2, when there was finally something here to load. While no
+    # artifact existed this step would have cost nothing and warmed nothing -
+    # which is exactly why it was missing on the day one appeared. Unpickling
+    # the model imports scikit-learn: the classify stage cost 1849.8 ms on the
+    # first analysis and 1.5 ms on the second, and only on the hashing backend,
+    # because the transformer path imports scikit-learn on its own account and
+    # hides it.
+    # The status string names which backend the deployment will actually use.
+    try:
+        status["role_classifier"] = classify.warmup()
+    except Exception as exc:
+        status["role_classifier"] = f"failed: {exc}"
+
     log.info("Warmup complete: %s", status)
     return status

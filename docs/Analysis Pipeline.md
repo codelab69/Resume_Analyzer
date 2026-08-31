@@ -67,6 +67,35 @@ the cache key is 0.002 ms, so re-uploading an identical file is effectively free
 > about 130 ms more boot time. Covered by `TestWarmup` in `tests/test_core.py`,
 > including a loose tripwire that fails if any lazy resource reappears in a hot path.
 
+> [!bug] The same gap, reopened by S6.2 — and 39× larger
+> The table above was measured when `artifacts/role_classifier.joblib` could not exist.
+> [[Sprint Board|S6.2]] made it exist, and `warmup()` had no step for it, so unpickling
+> the model — which drags the whole of scikit-learn into the interpreter — happened
+> inside whichever request arrived first.
+>
+> Measured 2026-08-31, hashing backend, sample resume, with a trained artifact present:
+>
+> | | classify | total |
+> |---|---:|---:|
+> | First upload after `warmup()`, before the fix | 1849.8 | **1858.1 ms** |
+> | Second upload | 1.5 | 6.0 ms |
+> | First upload after `warmup()`, after the fix | 2.4 | **11.7 ms** |
+>
+> RapidFuzz cost 47 ms. This cost **1.85 seconds**, and it landed on the first student to
+> upload after a deploy.
+>
+> It hid on the developer's machine for a reason worth remembering: on the transformer
+> backend the same first upload cost 76 ms, because `sentence-transformers` imports
+> scikit-learn on its own account and had already paid for it. The defect was therefore
+> invisible in full mode and severe in **degraded** mode — the mode this project promises
+> to keep usable.
+>
+> `warmup()` now calls `classify.warmup()`, which loads the artifact *and* runs a real
+> prediction through both backends, and returns which backend the machine will use so
+> `/api/health` can say so. `scripts/smoke_test.py` warms before timing too — its
+> per-stage numbers were being read as the cost of a stage while containing the cost of
+> a boot.
+
 When reading a timing breakdown from the API, check whether it was the first request
 since boot before drawing any conclusion from it.
 

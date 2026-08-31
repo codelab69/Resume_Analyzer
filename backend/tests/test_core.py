@@ -13,6 +13,7 @@ import ast
 import json
 import pathlib
 import re
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -1393,6 +1394,11 @@ class TestRoleClassification:
         # `alternatives` was empty, and the one path that produces an empty
         # alternatives list is the one where nothing matched at all - so the
         # single case with no evidence was the single case reported as certain.
+        #
+        # `confidence == 0.0` is a claim about the profile classifier, which
+        # only holds while there is no artifact. See the trained backend's
+        # version of "I have nothing" in the threshold tests below: a softmax
+        # cannot return zero, so its floor is a multiple of uniform instead.
         prediction = classify.predict("Nothing here at all.", set())
         assert prediction.confidence == 0.0
         assert not prediction.has_a_prediction
@@ -1454,6 +1460,11 @@ class TestRoleClassification:
     # --- the trained backend, which no artifact on disk ever exercises -----
 
     def test_falls_back_to_profiles_when_there_is_no_artifact(self):
+        # `hidden_artifacts` in conftest points `artifacts_dir` at an empty
+        # temp directory for the whole session, so "there is no artifact" is a
+        # fact about the test run rather than a fact about the machine. Before
+        # S6.2 there was no training script, so this test passed everywhere by
+        # accident; the day one existed and was run, it failed.
         classify._load_trained.cache_clear()
         assert classify._load_trained() is None
         assert classify.predict("Python developer", {"Python"}).backend == "profile"
@@ -1488,6 +1499,117 @@ class TestRoleClassification:
         assert prediction.keywords
         assert prediction.keywords <= set(classify._role_profiles()["DevOps Engineer"])
 
+    # --- S6.2: the trained backend needs its own thresholds ---------------
+    #
+    # These are the first tests of `TRAINED_PREDICTION_FLOOR` and
+    # `TRAINED_CONFIDENT_MARGIN`. They exist because the absolute
+    # `CONFIDENT_MARGIN = 0.08` is arithmetically unreachable once a softmax
+    # spreads over thirteen classes, and nothing caught that until an artifact
+    # existed to run against. All three use stub bundles with margins chosen to
+    # reproduce the spread measured on the real 26-posting artifact, where
+    # every prediction landed between 0.076 and 0.102.
+
+    @staticmethod
+    def _thirteen(top_margin: float):
+        """A LinearSVC-shaped stub over 13 classes, one of them ahead by `top_margin`."""
+        labels = [f"Role {index}" for index in range(13)]
+        return {
+            "vectorizer": _StubVectorizer(),
+            "model": _StubModel([top_margin] + [0.0] * 12),
+            "labels": labels,
+        }
+
+    def test_a_clear_trained_winner_is_confident_despite_a_tiny_absolute_margin(
+        self, monkeypatch
+    ):
+        # The regression this threshold pair fixes. A 0.026 gap is a decisive
+        # win across thirteen classes and a rounding error against a constant
+        # 0.08, so before S6.2 every single trained prediction - including a
+        # clean, well-formed resume - was reported as "sits between X and Y".
+        monkeypatch.setattr(classify, "_load_trained", lambda: self._thirteen(0.3))
+        prediction = classify._predict_trained("anything")
+
+        margin = prediction.confidence - prediction.alternatives[0][1]
+        assert margin < classify.CONFIDENT_MARGIN, "the old constant would have to pass"
+        assert prediction.has_a_prediction
+        assert prediction.is_confident
+        assert "reads like" in prediction.summary
+
+    def test_a_trained_score_on_the_uniform_floor_is_not_a_prediction(self, monkeypatch):
+        # A softmax always sums to one, so the trained backend never returns
+        # the 0.0 the profile classifier uses to mean "nothing matched". Its
+        # version of having nothing to say is every class scoring 1/K.
+        # `_predict_trained`, not `predict`: this is a claim about what the
+        # trained backend produces, and `predict` now hands a silent trained
+        # model's turn to the profile classifier - see S6.2b below.
+        monkeypatch.setattr(classify, "_load_trained", lambda: self._thirteen(0.0))
+        prediction = classify._predict_trained("anything")
+
+        assert prediction.confidence == pytest.approx(1 / 13, abs=1e-4)
+        assert prediction.confidence > classify.MINIMUM_USEFUL_CONFIDENCE, (
+            "the profile classifier's floor would have accepted this"
+        )
+        assert not prediction.has_a_prediction
+        assert not prediction.is_confident
+        assert "skills section" in prediction.summary
+
+    def test_a_trained_score_just_above_uniform_is_still_not_a_prediction(
+        self, monkeypatch
+    ):
+        # 1.10x uniform - the band a resume reading "Nothing here at all."
+        # lands in on the real artifact. Above the floor of noise, below the
+        # floor of an answer.
+        monkeypatch.setattr(classify, "_load_trained", lambda: self._thirteen(0.1))
+        prediction = classify._predict_trained("anything")
+
+        uniform = 1 / 13
+        assert 1.0 < prediction.confidence / uniform < classify.TRAINED_PREDICTION_FLOOR
+        assert not prediction.has_a_prediction
+
+    def test_a_trained_backend_with_no_opinion_defers_to_the_profiles(self, monkeypatch):
+        # S6.2b. The trained model is fitted on job postings and asked about
+        # resumes, so on a resume its top score sits near uniform. Returning
+        # it anyway made `has_a_prediction` false and printed "No skills this
+        # tool recognises were found" over a resume that had them.
+        monkeypatch.setattr(classify, "_load_trained", lambda: self._thirteen(0.0))
+        prediction = classify.predict(
+            "anything", {"Kubernetes", "CI/CD", "Terraform", "Prometheus", "Grafana"}
+        )
+
+        assert prediction.backend == "profile"
+        assert prediction.has_a_prediction
+        assert "No skills this tool recognises" not in prediction.summary
+
+    def test_the_trained_backend_still_wins_whenever_it_has_something_to_say(
+        self, monkeypatch
+    ):
+        # The fallback must be on silence, not on preference - otherwise the
+        # trained model is never used at all and S6.2 bought nothing.
+        monkeypatch.setattr(classify, "_load_trained", lambda: self._thirteen(0.3))
+        prediction = classify.predict("anything", {"Kubernetes", "CI/CD", "Terraform"})
+        assert prediction.backend == "trained"
+
+    def test_neither_backend_having_an_answer_still_says_so(self, monkeypatch):
+        # Deferring must not turn "nothing to say" into a made-up answer.
+        monkeypatch.setattr(classify, "_load_trained", lambda: self._thirteen(0.0))
+        prediction = classify.predict("Nothing here at all.", set())
+        assert not prediction.has_a_prediction
+        assert "skills section" in prediction.summary
+
+    def test_the_profile_backend_keeps_the_absolute_margin(self):
+        # `label_count` is what switches the thresholds, and only the trained
+        # backend sets it. A profile prediction must still be judged against
+        # `CONFIDENT_MARGIN`, whose units are weighted recall, not a softmax.
+        prediction = classify._predict_profile({"Python", "SQL", "Pandas"})
+        assert prediction.label_count == 0
+        assert prediction._uniform == 0.0
+
+        near_tie = classify.RolePrediction(
+            role="Backend Developer", confidence=0.40, backend="profile",
+            alternatives=[("Full Stack Developer", 0.34)],
+        )
+        assert not near_tie.is_confident
+
     def test_a_broken_model_falls_back_instead_of_raising(self, monkeypatch):
         class _Exploding:
             def transform(self, documents):
@@ -1501,6 +1623,259 @@ class TestRoleClassification:
         monkeypatch.setattr(classify, "_load_trained", lambda: bundle)
         prediction = classify.predict("Python developer", {"Python", "FastAPI"})
         assert prediction.backend == "profile"
+
+
+
+class TestTrainClassifier:
+    """S6.2. The script that makes the trained backend real.
+
+    Everything here runs against `hidden_artifacts` - the temp directory
+    conftest points `artifacts_dir` at - so training in a test can never
+    overwrite the model on the developer's disk. That is also why `main()` is
+    called in process rather than as a subprocess: a child interpreter would
+    not inherit the patch and would write straight into `backend/artifacts/`.
+
+    Skipped where scikit-learn is missing, via `train_classifier_module`. The
+    app has no such dependency and the rest of the suite must stay green
+    without it.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean_between_tests(self, hidden_artifacts):
+        """Leave the artifacts directory as empty as it was found.
+
+        Without this, the first test here to write a model would silently hand
+        a trained backend to every test that ran after it, which is the exact
+        failure `hidden_artifacts` exists to prevent.
+        """
+        yield
+        for leftover in hidden_artifacts.iterdir():
+            leftover.unlink()
+        classify._load_trained.cache_clear()
+
+    @staticmethod
+    def _run(module, monkeypatch, *flags):
+        """Run the script's `main()` with `flags`, returning its exit code."""
+        monkeypatch.setattr(sys, "argv", ["train_classifier.py", *flags])
+        return module.main()
+
+    # --- AC: writes the artifact where classify.py looks -------------------
+
+    def test_the_writer_and_the_reader_name_the_same_file(self):
+        """Read from the source, so it holds without scikit-learn installed.
+
+        The directory is shared through `settings` and cannot drift. The file
+        name is a string literal on both sides and can.
+        """
+        backend = pathlib.Path(__file__).resolve().parents[1]
+        writer = (backend / "scripts" / "train_classifier.py").read_text(encoding="utf-8")
+        reader = (backend / "app" / "core" / "classify.py").read_text(encoding="utf-8")
+
+        names = re.findall(r'"([\w.]+\.joblib)"', writer)
+        assert names, "the training script no longer names an artifact file"
+        for name in set(names):
+            assert f'"{name}"' in reader, f"{name} is written but never read"
+
+    def test_training_produces_an_artifact_the_classifier_then_uses(
+        self, train_classifier_module, hidden_artifacts, monkeypatch, capsys
+    ):
+        # The whole point of the story, end to end: before, the profile
+        # classifier answers because there is no model; after, the trained one
+        # does, and nothing in between was told where to look.
+        assert classify._load_trained() is None
+        assert classify.predict("Python developer", {"Python"}).backend == "profile"
+
+        assert self._run(train_classifier_module, monkeypatch) == 0
+        capsys.readouterr()
+
+        written = hidden_artifacts / train_classifier_module.ARTIFACT_NAME
+        assert written.exists()
+
+        classify._load_trained.cache_clear()
+        bundle = classify._load_trained()
+        assert bundle is not None
+        assert set(bundle) >= {"vectorizer", "model", "labels", "keywords"}
+        assert classify.predict("Python developer", {"Python"}).backend == "trained"
+
+    def test_the_real_artifact_never_denies_skills_the_ontology_found(
+        self, train_classifier_module, monkeypatch, capsys, weak_resume_text
+    ):
+        """S6.2b, against the real model rather than a stub.
+
+        The weak fixture has exactly one recognised skill, and the trained
+        model scores it at 1.09x uniform - below the floor, so it has no
+        opinion. Before the fallback moved onto `has_a_prediction`, that
+        silence reached the student as a statement about their resume.
+        """
+        found = {hit.name for hit in skills.find_skills(weak_resume_text)}
+        assert found, "the fixture is supposed to have a recognised skill"
+
+        self._run(train_classifier_module, monkeypatch)
+        capsys.readouterr()
+        classify._load_trained.cache_clear()
+
+        assert classify._predict_trained(weak_resume_text).has_a_prediction is False
+        prediction = classify.predict(weak_resume_text, found)
+        assert prediction.backend == "profile"
+        assert "No skills this tool recognises" not in prediction.summary
+
+    def test_a_trained_prediction_still_carries_role_keywords(
+        self, train_classifier_module, monkeypatch, capsys
+    ):
+        # ATS rule 7 scores keyword density against the predicted role. The
+        # trained model knows nothing about the skill ontology, so the artifact
+        # stores the profile classifier's keywords alongside it.
+        self._run(train_classifier_module, monkeypatch)
+        capsys.readouterr()
+        classify._load_trained.cache_clear()
+
+        prediction = classify.predict("Kubernetes Terraform AWS pipelines", set())
+        assert prediction.backend == "trained"
+        assert prediction.keywords
+        assert len(prediction.keywords) <= classify.ROLE_KEYWORD_COUNT
+
+    def test_startup_absorbs_the_cost_of_loading_the_model(
+        self, train_classifier_module, monkeypatch, capsys
+    ):
+        """S6.2c, against a real artifact rather than an empty directory.
+
+        `TestWarmup` can only assert that the caches were touched, because it
+        runs where there is no model. Here there is one, so the stronger claim
+        holds: after `warmup()` the bundle is loaded and named, and no request
+        has run yet.
+        """
+        self._run(train_classifier_module, monkeypatch)
+        capsys.readouterr()
+        classify._load_trained.cache_clear()
+        classify._role_profiles.cache_clear()
+
+        status = pipeline.warmup()
+
+        assert status["role_classifier"] == "trained, 13 labels", status
+        assert classify._load_trained() is not None
+        assert classify._load_trained.cache_info().misses == 1, (
+            "the artifact was unpickled a second time, which means warmup() "
+            "did not do it and a request did"
+        )
+        # The profile classifier has to be warmed here too, and this is the
+        # only place the claim can fail. Written first in `TestWarmup`, where
+        # it passed for the wrong reason: with no artifact, `warmup` builds the
+        # profiles on its way to returning "profile, N roles", so deleting its
+        # explicit profile pass changed nothing there. With an artifact it
+        # returns from the trained branch instead, and only the explicit pass
+        # warms the backend that answers most resumes.
+        assert classify._role_profiles.cache_info().currsize == 1, (
+            "warmup() must run the profile backend as well as the trained one"
+        )
+
+    # --- AC: reports held-out accuracy -------------------------------------
+
+    def test_it_reports_the_held_out_score_with_its_sample_size(
+        self, train_classifier_module, monkeypatch, capsys
+    ):
+        # An accuracy without a sample size beside it is the number this whole
+        # script is written to stop anybody quoting.
+        from app.core import jobs_data
+
+        self._run(train_classifier_module, monkeypatch, "--dry-run")
+        output = capsys.readouterr().out
+
+        assert "leave-one-out" in output
+        assert "training accuracy" in output
+        assert str(len(jobs_data.load_jobs())) in output
+        assert "postings" in output
+
+    def test_leave_one_out_counts_a_single_posting_class_as_a_failure(
+        self, train_classifier_module
+    ):
+        # The docstring's central claim. A class with one example cannot be
+        # predicted when that example is the held-out one, and skipping those
+        # would report a number that quietly excludes the weakest classes.
+        texts = [
+            "python fastapi rest api backend service postgres",
+            "backend developer python django rest api sql",
+            "figma wireframe prototype user research design system",
+            "ux designer figma prototyping usability testing",
+            "kubernetes terraform aws cloud infrastructure networking",
+        ]
+        labels = ["Backend", "Backend", "Design", "Design", "Cloud"]
+
+        accuracy, misses, _complaints = train_classifier_module.leave_one_out(texts, labels)
+
+        assert any(miss.startswith("Cloud ->") for miss in misses), misses
+        # Counted in the denominator, not dropped from it.
+        assert accuracy == (len(texts) - len(misses)) / len(texts)
+        assert accuracy <= 0.8
+
+    # --- AC: refuses to overwrite a better model ---------------------------
+
+    def _plant(self, module, score: float):
+        """Put an artifact on disk claiming `score`, and return its bytes."""
+        import joblib
+
+        path = module.artifact_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump({"leave_one_out": score}, path)
+        return path, path.read_bytes()
+
+    def test_it_refuses_to_replace_a_better_model(
+        self, train_classifier_module, monkeypatch, capsys
+    ):
+        path, before = self._plant(train_classifier_module, 0.99)
+
+        code = self._run(train_classifier_module, monkeypatch)
+        output = capsys.readouterr().out
+
+        assert code == 1, "a refusal has to be visible to a commit hook"
+        assert "Refusing to overwrite" in output
+        assert path.read_bytes() == before
+
+    def test_force_replaces_it_anyway(
+        self, train_classifier_module, monkeypatch, capsys
+    ):
+        path, before = self._plant(train_classifier_module, 0.99)
+
+        assert self._run(train_classifier_module, monkeypatch, "--force") == 0
+        capsys.readouterr()
+        assert path.read_bytes() != before
+
+    def test_an_equal_or_better_score_is_written_without_force(
+        self, train_classifier_module, monkeypatch, capsys
+    ):
+        # The refusal must not become a lock: retraining on an unchanged corpus
+        # scores the same, and that has to be allowed through.
+        path, before = self._plant(train_classifier_module, 0.0)
+
+        assert self._run(train_classifier_module, monkeypatch) == 0
+        capsys.readouterr()
+        assert path.read_bytes() != before
+
+    def test_dry_run_writes_nothing_at_all(
+        self, train_classifier_module, hidden_artifacts, monkeypatch, capsys
+    ):
+        assert self._run(train_classifier_module, monkeypatch, "--dry-run") == 0
+        assert "nothing written" in capsys.readouterr().out
+        assert list(hidden_artifacts.iterdir()) == []
+
+    def test_an_unreadable_artifact_is_no_comparison_rather_than_a_crash(
+        self, train_classifier_module
+    ):
+        # Three different situations return None on purpose - no file, a file
+        # that will not load, and one predating the key. All three mean "there
+        # is nothing to be worse than", and none of them should stop a run
+        # whose whole purpose may be to replace that file.
+        assert train_classifier_module.existing_score() is None
+
+        path = train_classifier_module.artifact_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"this is not a joblib file")
+        assert train_classifier_module.existing_score() is None
+
+        import joblib
+
+        joblib.dump({"labels": ["Backend Developer"]}, path)
+        assert train_classifier_module.existing_score() is None
+
 
 
 class TestEmbed:
@@ -1762,6 +2137,7 @@ class TestWarmup:
         status = pipeline.warmup()
         assert {
             "skills", "action_verbs", "fuzzy_matching", "embeddings", "jobs",
+            "role_classifier",
         } <= set(status)
 
     def test_nothing_reports_a_failure(self):
@@ -1785,6 +2161,41 @@ class TestWarmup:
             "warmup() must run a fuzzy pass, not merely load the skill index - "
             "otherwise the first upload after boot pays RapidFuzz's setup cost."
         )
+
+    def test_warms_the_role_classifier(self):
+        """S6.2c, and the same shape as the RapidFuzz regression above.
+
+        `_load_trained` is `lru_cache`d, so the artifact is unpickled once per
+        process - and until this test that "once" was inside whichever request
+        arrived first. Unpickling pulls in the whole of scikit-learn: measured
+        at 1849 ms on the first analysis against 6 ms on the second.
+
+        Asserted structurally, on the cache, rather than as a timing. The suite
+        runs with `hidden_artifacts`, so there is no model to load and no cost
+        to measure here; what has to hold either way is that startup is the
+        thing that touches these caches, and that a deployment with an artifact
+        therefore pays for it at boot rather than in a student's request.
+        """
+        classify._load_trained.cache_clear()
+
+        pipeline.warmup()
+
+        assert classify._load_trained.cache_info().currsize == 1, (
+            "warmup() must load the trained artifact, or the first request does"
+        )
+
+    def test_the_role_classifier_status_names_the_backend_that_will_answer(self):
+        """Which backend runs is a property of the machine, not of the code.
+
+        `artifacts/` is gitignored, so the same commit serves the trained model
+        on one box and the profile classifier on another. `/api/health` is
+        where a deployment states things like that, so the status string has to
+        say which one, not merely "ready".
+        """
+        status = pipeline.warmup()
+        assert status["role_classifier"].startswith(("trained,", "profile,")), status
+        # No artifact under `hidden_artifacts`, so this run must say so.
+        assert status["role_classifier"] == "profile, 13 roles"
 
     def test_a_warm_analysis_is_dominated_by_no_single_stage(self, sample_resume_bytes):
         """After warmup, no stage should be an order of magnitude off the rest.

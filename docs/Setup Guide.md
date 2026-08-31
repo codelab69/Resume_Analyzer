@@ -180,9 +180,16 @@ What a healthy machine reports:
 | Check | Expect |
 |---|---|
 | `smoke_test.py` | a full report, per-stage timings, ending `Smoke test passed.` |
-| `pytest -q` | **no failures.** The count was 200 when this guide was written and is 322 today; it goes up every story, so the number is not the thing to check |
+| `pytest -q` | **no failures.** The count was 200 when this guide was written and is 343 today; it goes up every story, so the number is not the thing to check |
 | `e2e_check.py` | `All end-to-end checks passed.` (29 checks) |
 | `validate_skills.py` | `Ontology is valid.` and a warning count |
+
+None of the four trains anything. The role classifier has an optional fifth step —
+`python scripts/train_classifier.py` — which writes `artifacts/role_classifier.joblib`
+and makes `/api/health` report `role_classifier: trained, 13 labels` rather than
+`profile, 13 roles`. Skipping it is a supported state, not a broken one: `artifacts/` is
+gitignored, so a clone runs the profile classifier and every check above still passes.
+See [[Role Classification]] before quoting an accuracy from it.
 
 Then the frontend check: open the app, upload
 `backend/tests/fixtures/sample_resume.txt`. If a report renders with a score, the whole

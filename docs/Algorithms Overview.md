@@ -174,8 +174,11 @@ TF-IDF plus a linear classifier when a trained artifact exists; role profiles **
 from the job corpus** scored against the extracted skills when it does not. Both paths
 return the same shape, so nothing downstream knows which ran.
 
-Today only the second path ever runs: there is no trained artifact, and the script that
-would produce one is not yet written. A prediction below a useful confidence is reported
+On a fresh clone only the second path runs: `artifacts/` is not in git, so there is no
+trained model until `scripts/train_classifier.py` is run. Where a model does exist it
+answers only when it has an opinion — it is trained on job postings and asked about
+resumes, and on a resume it is often near-uniform, in which case the profile classifier
+answers instead. A prediction below a useful confidence is reported
 as *no* prediction rather than as a "General" profile — see [[Role Classification#S4.6a — the one case with no evidence was the one case reported as certain]].
 
 ---

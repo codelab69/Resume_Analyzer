@@ -223,6 +223,55 @@ A convention that depends on remembering to check is not a control. Four tests a
 
 ---
 
+## D9 — The trained classifier ships, and defers to the profile classifier on resumes
+
+**Decision.** `scripts/train_classifier.py` (S6.2) trains the TF-IDF + LinearSVC model and
+writes `artifacts/role_classifier.joblib`, but `predict()` returns its answer only when it
+has one. Where the trained model lands on the uniform floor, the profile classifier
+answers instead. The artifact stays out of git, so a fresh clone still runs on profiles.
+
+Because of that last clause, which backend answers is a property of the machine and not of
+the commit, so the deployment has to say which one: startup loads the classifier and
+`/api/health` reports `role_classifier: trained, 13 labels` or `profile, 13 roles`. Neither
+value is a degraded state — `status` stays `ok` for both.
+
+**Alternative.** Two were available and both were rejected.
+
+*Prefer the trained model whenever it loads* — what the code did until this story, on the
+reasoning that a trained model is the graded one and therefore the better one. It is what
+produced S6.2b.
+
+*Lower `TRAINED_CONFIDENT_MARGIN` until a clean resume reads as confident* — tempting,
+because it makes the demo sentence read better, and wrong. It reports a coin-flip as a
+decision.
+
+**Evidence, 2026-08-31.** The model is fitted on job postings and asked about resumes, and
+the domain gap is not marginal. Every score below is a multiple of uniform = 1/13, which is
+what a softmax over thirteen classes returns when the model has no opinion:
+
+| Input | Top score | Margin over runner-up | Reported confident |
+|---|---|---|---|
+| The 26 job postings it was trained on | 2.72–3.68× | 1.76–2.87× | 26 of 26 |
+| `sample_resume.txt`, clean and well-formed | 1.32× | **0.09×** | no |
+| `weak_resume.txt` | 1.09× | 0.01× | no |
+
+The margin on a posting is at least nineteen times the margin on the best resume. The
+model can separate roles in the language it was trained on and not in the language it is
+used for, and no threshold recovers a distinction the scores do not contain. On that same
+sample resume the profile classifier separates **0.6667 against 0.4737** and says so.
+
+Held-out accuracy on the postings is **57.7% leave-one-out on 26 postings across 13 roles**
+against 100% training accuracy — quotable only with that sample size beside it, which is
+why the script prints both lines together and names all eleven misses.
+
+So the trained backend is kept, because it is the one that can be reported with a
+confusion matrix and because the corpus that fixes it is S6.3, not a rewrite. It is simply
+not allowed to speak over a backend that has something to say. See
+[[Role Classification#S6.2b — the trained model's silence was printed as a finding about the resume]]
+for what its silence was reaching students as before this.
+
+---
+
 ## Still to record
 
 This note was started when S2.4 needed somewhere to put its numbers, so it currently

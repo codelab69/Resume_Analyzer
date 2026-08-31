@@ -211,7 +211,8 @@ return nothing.
     "action_verbs": "235 verbs",
     "fuzzy_matching": "ready",
     "embeddings": "hashing",
-    "jobs": "26 postings indexed"
+    "jobs": "26 postings indexed",
+    "role_classifier": "profile, 13 roles"
   },
   "semantic_backend": "hashing",
   "notes": ["…"]
@@ -224,6 +225,14 @@ working on a fallback — which is a designed state, not an outage. See
 
 `components` is filled by the startup warmup, so it reports what actually loaded rather
 than what is installed.
+
+`role_classifier` reads `trained, 13 labels` where `artifacts/role_classifier.joblib`
+exists and `profile, 13 roles` where it does not. `artifacts/` is not in git, so this is a
+fact about the machine rather than about the commit, which is why the health endpoint
+states it — see [[Role Classification]] and
+[[Decision Log#D9 — The trained classifier ships, and defers to the profile classifier on resumes]].
+Both are working answers; `status` stays `ok` either way, because the profile classifier is
+an implementation and not a degraded mode.
 
 > [!warning] Check this before every demo
 > `semantic_backend: hashing` means match scores are vocabulary-based rather than

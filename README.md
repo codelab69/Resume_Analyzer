@@ -165,6 +165,23 @@ gate. Run it after every deployment and before every demo.
 Then open the frontend and upload `backend/tests/fixtures/sample_resume.txt`. If a
 report renders, the whole stack is working.
 
+### Optional: train the role classifier
+
+The app ships without a trained model. `artifacts/` is not in git, so a fresh clone runs
+the **profile classifier**, which is built from the job corpus at runtime and needs no
+model file — that is a working implementation, not a degraded mode.
+
+```bash
+python scripts/train_classifier.py --dry-run   # report the scores, write nothing
+python scripts/train_classifier.py             # train and write the artifact
+```
+
+`GET /api/health` then reports `role_classifier: trained, 13 labels` instead of
+`profile, 13 roles`. Read what the script prints before quoting any accuracy from it:
+**57.7% leave-one-out on 26 postings across 13 roles** is a demonstration, not a result,
+and the model is trained on job postings while being asked about resumes. The reasoning
+is in [`docs/Role Classification`](docs/Role%20Classification.md).
+
 ---
 
 ## Configuration
@@ -251,8 +268,9 @@ backend/
     store.py      SQLite access, plain SQL, no ORM
     main.py       app assembly, CORS, lifespan warmup, error handler
   data/           skills, headings, action verbs, job corpus — all JSON/text
-  scripts/        smoke_test.py, e2e_check.py
-  tests/          120 tests plus fixtures
+  scripts/        smoke_test.py, e2e_check.py, validate_skills.py, train_classifier.py
+  artifacts/      generated models — not in git, see below
+  tests/          343 tests plus fixtures
 frontend/
   src/
     routes/       six screens
@@ -273,7 +291,7 @@ without a server and reusable outside one.
 
 ```bash
 cd backend
-pytest -q                        # 120 unit and integration tests
+pytest -q                        # 343 unit and integration tests, and rising
 python scripts/smoke_test.py     # the pipeline, no server
 python scripts/e2e_check.py      # real HTTP against a running server
 

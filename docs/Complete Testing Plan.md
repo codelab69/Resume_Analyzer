@@ -21,10 +21,13 @@ Do not start until all of these are true. Testing a build that does not run wast
 - [ ] `uvicorn app.main:app` starts and logs `Ready on http://...`
 - [ ] `npm run build` in `frontend/` completes with no TypeScript errors
 - [ ] `GET /api/health` returns 200
-- [ ] The `components` block in that response lists `skills`, `action_verbs`, `embeddings` and `jobs` with no `failed:` prefix
+- [ ] The `components` block in that response lists `skills`, `action_verbs`, `embeddings`, `jobs` and `role_classifier` with no `failed:` prefix
+- [ ] `role_classifier` is recorded below — `trained` and `profile` are different implementations, so results are no more comparable across them than across embedding backends
 - [ ] Which mode is under test is recorded below — results are not comparable across modes
 
 **Semantic backend for this run:** ☐ `transformer` (full) ☐ `hashing` (degraded)
+
+**Role classifier for this run:** ☐ `trained` (an artifact exists) ☐ `profile` (a fresh clone)
 
 ---
 

@@ -4,9 +4,11 @@ TWO IMPLEMENTATIONS, SAME INTERFACE
 -----------------------------------
 "trained"   A TF-IDF + LinearSVC model loaded from artifacts/. This is the
             model to report accuracy, precision, recall, F1 and a confusion
-            matrix for. Its training script, scripts/train_classifier.py, is
-            not yet written, so no artifact exists yet and this backend has
-            never run outside its tests - see [[Role Classification]].
+            matrix for. It is built by scripts/train_classifier.py, and the
+            artifact is generated rather than shipped - artifacts/ is not in
+            git, so a fresh clone has no model until that script is run and
+            the profile classifier below is what answers. Quote the numbers
+            that script prints, with its sample size - see [[Role Classification]].
 
 "profile"   A nearest-profile classifier built at runtime from the job corpus
             in data/jobs.json. Each role profile is the set of skills its
@@ -36,7 +38,48 @@ log = logging.getLogger(__name__)
 
 # Below this margin the top two roles are effectively tied and the prediction
 # should be presented as uncertain rather than stated as fact.
+#
+# This is in the profile classifier's units: weighted recall in 0..1, which
+# spreads widely - the sample resume scores 0.6667 against a runner-up of
+# 0.4737.
 CONFIDENT_MARGIN = 0.08
+
+# The trained backend needs its own thresholds, and these were measured rather
+# than assumed. Its scores are a softmax over LinearSVC decision margins, which
+# spreads thirteen classes around uniform = 1/13 = 0.0769. On resumes every
+# prediction from the 26-posting artifact landed between 0.076 and 0.102 - a
+# spread of 0.026 - so the absolute CONFIDENT_MARGIN above is not merely strict
+# there, it is arithmetically unreachable.
+#
+# Both trained thresholds are therefore multiples of the uniform score, which
+# is what "the model said nothing" looks like at K classes.
+#
+#   floor   how far above uniform the top score must be to count as an answer
+#           at all.
+#   margin  how far the top must beat the runner-up, as a fraction of uniform.
+#
+# WHAT THE MEASUREMENTS ACTUALLY SHOWED, INCLUDING THE PART THAT IS NOT FIXED
+# --------------------------------------------------------------------------
+# Top score, as a multiple of uniform:  job postings 2.72-3.68x, sample resume
+# 1.32x, weak resume 1.09x. Margin over the runner-up: postings 1.76-2.87x,
+# sample resume 0.09x, weak resume 0.01x.
+#
+# The floor sits in the gap that matters and does real work: it is what tells
+# a resume the model has an opinion about from one it does not, and it is what
+# `predict` now routes on. The margin does not have a comparable gap to sit in
+# on resumes - every resume this model has been shown lands two orders of
+# magnitude below every posting - so 0.20 separates "posting" from "resume"
+# and nothing finer. A clean, well-formed resume is still reported as sitting
+# between two roles, because at 0.1017 against 0.0949 it genuinely is, as far
+# as this model can tell.
+#
+# That is a fact about training on postings and predicting on resumes, not a
+# threshold that needs tuning, and no value here fixes it. The profile
+# classifier separates the same resume 0.6667 to 0.4737. See S6.2b on the
+# board and [[Role Classification]]; do not "fix" this by lowering the margin
+# until a resume passes, which would report a coin-flip as a decision.
+TRAINED_PREDICTION_FLOOR = 1.15
+TRAINED_CONFIDENT_MARGIN = 0.20
 
 # How many of a role's most characteristic skills to expose as keywords.
 #
@@ -58,6 +101,14 @@ ROLE_KEYWORD_COUNT = 25
 # a score of zero must never be presented as an answer.
 MINIMUM_USEFUL_CONFIDENCE = 0.01
 
+# What `warmup()` puts through each backend at startup. Deliberately a scrap
+# of posting-ish text and a matching skill set rather than an empty string:
+# both backends short-circuit on nothing at all, and a warmup that takes the
+# short path warms nothing. It is never shown to anybody, so the only property
+# that matters is that it reaches the real code.
+_WARMUP_TEXT = "Python developer, REST APIs, Docker, SQL, unit testing."
+_WARMUP_SKILLS = {"Python", "Docker", "SQL"}
+
 
 @dataclass
 class RolePrediction:
@@ -68,14 +119,30 @@ class RolePrediction:
     backend: str                             # "trained" | "profile"
     alternatives: list[tuple[str, float]] = field(default_factory=list)
     keywords: set[str] = field(default_factory=set)
+    # How many classes the score was spread across. Only the trained backend
+    # sets it, because only the trained backend produces scores whose meaning
+    # depends on the class count.
+    label_count: int = 0
+
+    @property
+    def _uniform(self) -> float:
+        """The score a softmax gives when the model has no opinion: 1/K."""
+        return 1.0 / self.label_count if self.label_count else 0.0
 
     @property
     def has_a_prediction(self) -> bool:
-        """False when nothing matched and the role name is a placeholder.
+        """False when the backend has not actually said anything.
 
         `_predict_profile` returns General/0.0 for a resume showing no skill
         any role asks for. That is the absence of an answer, not an answer.
+
+        The trained backend never returns 0.0 - a softmax always sums to one,
+        so every input gets a winner. Its "I have nothing" looks like a top
+        score sitting on the uniform floor instead, which is why it is tested
+        against `_uniform` rather than against a constant.
         """
+        if self.label_count:
+            return self.confidence >= self._uniform * TRAINED_PREDICTION_FLOOR
         return self.confidence >= MINIMUM_USEFUL_CONFIDENCE
 
     @property
@@ -87,7 +154,10 @@ class RolePrediction:
             return False
         if not self.alternatives:
             return True
-        return (self.confidence - self.alternatives[0][1]) >= CONFIDENT_MARGIN
+        margin = self.confidence - self.alternatives[0][1]
+        if self.label_count:
+            return margin >= self._uniform * TRAINED_CONFIDENT_MARGIN
+        return margin >= CONFIDENT_MARGIN
 
     @property
     def summary(self) -> str:
@@ -125,8 +195,8 @@ def _load_trained():
     if not path.exists():
         log.info(
             "No trained role classifier at %s. Using the profile classifier, "
-            "which is the only backend available until scripts/"
-            "train_classifier.py is written (not yet written).", path
+            "which is built from the job corpus at runtime and needs no model "
+            "file. Run scripts/train_classifier.py to produce one.", path
         )
         return None
 
@@ -185,6 +255,7 @@ def _predict_trained(text: str) -> RolePrediction | None:
         backend="trained",
         alternatives=[(role, round(float(s), 4)) for role, s in ranked[1:4]],
         keywords=keywords,
+        label_count=len(labels),
     )
 
 
@@ -301,9 +372,22 @@ def predict(text: str, resume_skills: set[str]) -> RolePrediction:
 
     Tries the trained model first and falls back to profiles. Both are cheap;
     neither performs I/O after the first call.
+
+    The fallback is on "the trained model said nothing", not merely on "there
+    is no trained model". Those were the same condition for as long as no
+    artifact existed, and S6.2 is what made them different: the model is
+    trained on job postings and asked about resumes, and on a resume its top
+    score sits near the uniform floor. Returning that anyway meant a resume
+    with recognised skills was told **"No skills this tool recognises were
+    found"** - the trained backend's silence, printed as a finding, while the
+    profile classifier sitting right there had an answer.
+
+    Two backends that read different signals - posting vocabulary against
+    ontology skills - are only worth having if the one with nothing to say
+    stands aside for the one that has something.
     """
     trained = _predict_trained(text)
-    if trained is not None:
+    if trained is not None and trained.has_a_prediction:
         # The trained model knows nothing about our skill ontology, so borrow
         # role keywords from the profile classifier when it has them.
         if not trained.keywords:
@@ -313,3 +397,47 @@ def predict(text: str, resume_skills: set[str]) -> RolePrediction:
         return trained
 
     return _predict_profile(resume_skills)
+
+
+def warmup() -> str:
+    """Load both backends ahead of the first request. Called from app startup.
+
+    Returns which backend will answer on this machine - "trained, 13 labels"
+    or "profile, 13 roles" - because that is a fact about the deployment, not
+    about the code, and `/api/health` is where a deployment states such things.
+
+    WHY THIS EXISTS, WITH THE MEASUREMENT THAT PUT IT HERE
+    ------------------------------------------------------
+    `_load_trained` is `lru_cache`d, so the artifact is unpickled exactly once
+    per process - and until S6.2 that "once" happened inside whichever request
+    arrived first. Unpickling a TF-IDF vectorizer and a LinearSVC drags the
+    whole of scikit-learn into the interpreter: the classify stage cost
+    **1849.8 ms** on the first analysis and **1.5 ms** on the second, measured
+    on 2026-08-31 with the hashing embedding backend.
+
+    That cost is invisible on a machine with `sentence-transformers` installed,
+    because `embed.warmup()` has already imported scikit-learn as one of its
+    own transitive dependencies, which brings the same first request down to
+    76 ms.
+    So the defect hides on the developer's box and appears on exactly the
+    deployment this project promises to support - the degraded one.
+
+    Loading the model is not sufficient on its own, for the same reason
+    `pipeline.warmup` warms a fuzzy pass rather than just the skill index: the
+    first real `transform` costs another ~14 ms of scipy sparse setup. So this
+    runs a prediction, through both backends, rather than only touching the
+    caches.
+    """
+    bundle = _load_trained()
+
+    # Both backends explicitly, not whichever one `predict` happens to route
+    # to. With an artifact on disk that answers, `predict` never reaches the
+    # profile classifier, and the profile classifier is what serves every
+    # resume the trained model has nothing to say about - which, per D9, is
+    # most of them.
+    _predict_trained(_WARMUP_TEXT)
+    _predict_profile(_WARMUP_SKILLS)
+
+    if bundle is not None:
+        return f"trained, {len(bundle['labels'])} labels"
+    return f"profile, {len(_role_profiles())} roles"

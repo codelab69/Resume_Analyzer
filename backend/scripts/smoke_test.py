@@ -51,6 +51,15 @@ def main() -> int:
         return 1
 
     data = target.read_bytes()
+
+    # Warm up first, exactly as the API's startup hook does, because the
+    # timings printed at the end are read as "what a stage costs" and without
+    # this they are "what a stage costs plus whatever it loaded on the way".
+    # After S6.2 that gap stopped being academic: unpickling the trained
+    # classifier put 1849 ms inside the classify stage of a cold process, so
+    # this script reported a two-second classification of a resume the server
+    # classifies in one millisecond.
+    warmup = pipeline.warmup()
     analysis = pipeline.analyse(data, target.name)
 
     section("1. EXTRACTION")
@@ -123,9 +132,13 @@ def main() -> int:
         print(f"   {job_match.why}")
 
     section("9. TIMINGS")
+    print("  warm, after startup warmup - what a request costs, not a boot")
+    print()
     for stage, ms in analysis.timings.items():
         print(f"  {stage:<12}{ms:>8.1f} ms")
     print(f"  {'TOTAL':<12}{analysis.total_ms:>8.1f} ms")
+    print()
+    print(f"  warmup loaded: {warmup}")
 
     # Fail loudly if a stage produced nothing.
     problems = []

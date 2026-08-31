@@ -50,28 +50,29 @@ same bar every time.
 | [[#Sprint 3 — Architecture notes]] | The "how it fits together" half of the vault | Complete |
 | [[#Sprint 4 — Algorithm notes]] | Every algorithm written up for the viva | **Complete** — 9 notes, 13 defects, 2026-08-29 |
 | [[#Sprint 5 — Guides and reference]] | A stranger can set it up unaided | In progress |
-| [[#Sprint 6 — Maintenance tooling]] | The data files can be grown safely | Not started |
+| [[#Sprint 6 — Maintenance tooling]] | The data files can be grown safely | In progress — S6.1 and S6.2 done |
 | [[#Sprint 7 — Release hardening]] | Demo-day proof | Not started |
 
 ---
 
 ## Last verified
 
-Everything ticked above was green at the same moment, on 2026-08-29:
+Everything ticked above was green at the same moment, on 2026-08-31 — except the two rows
+that say otherwise in their own right-hand column:
 
 | Check | Result | Measured |
 |---|---|---|
-| `pytest` | **322 passed** in 2.6 s (120 at the start of Sprint 1, 311 before S5.3) | 2026-08-29 |
-| `scripts/smoke_test.py` | passed, TOTAL 201 ms | 2026-08-29 |
-| `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed, on the transformer backend** | 2026-08-29 |
-| `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, notes empty | 2026-08-29 |
-| `npm run build` | clean, no warnings, 1052 modules, largest chunk `charts` 368 kB, 3.5 s | 2026-08-29 |
+| `pytest` | **343 passed** in 8.1 s (120 at the start of Sprint 1, 322 before S6.2). Run twice, once with `artifacts/role_classifier.joblib` present and once with it moved away — same 343 both times, which is the point of S6.2a | 2026-08-31 |
+| `scripts/smoke_test.py` | passed, TOTAL **8.0 ms** warm. Not comparable with the 201 ms recorded on 2026-08-29: that run was cold, and after S6.2c the script warms up before it times anything, because a cold `classify` stage was printing 2062.6 ms of scikit-learn import as if it were the cost of classifying | 2026-08-31 |
+| `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed, on the transformer backend**, with a trained classifier on disk | 2026-08-31 |
+| `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, `role_classifier: trained, 13 labels`, notes empty | 2026-08-31 |
+| `npm run build` | clean, no warnings, 1052 modules, largest chunk `charts` 368 kB, 3.5 s | 2026-08-29, not re-run since |
 | All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 29/29 | 2026-08-27, not re-run since |
-| Vault link integrity | 237 links checked: 153 resolve, 84 point at notes still on this board, **0 broken**. One genuinely broken anchor was found and fixed — `[[Data Model#3. Deletion actually deletes]]` had been written without the section number, which Obsidian does not match | 2026-08-27, not re-run since |
+| Vault link integrity | **387 links checked: 371 resolve, 16 point at notes still on this board (`Troubleshooting` and `Glossary`), 0 broken anchors.** One link written in this story was broken and fixed: a wikilink wrapped across two lines, which Obsidian does not match — the same failure mode as the `not yet written` marker that wrapped in S5.2a. The 2026-08-27 run checked 237 | 2026-08-31 |
 
-The right-hand column exists because the two bottom rows were not re-run today and saying
-so is cheaper than a reader assuming they were. The e2e figure in this table used to read
-30; it had never been true — see S4.4c.
+The right-hand column exists because two of these rows — `npm run build` and the clean-venv
+run — were not re-run today, and saying so is cheaper than a reader assuming they were. The
+e2e figure in this table used to read 30; it had never been true — see S4.4c.
 
 > [!important] The headline change on 2026-08-27
 > The semantic path is live. `/api/health` reports `ok` rather than `degraded` for the
@@ -81,15 +82,20 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Twenty-seven defects have been found by verifying rather than by looking
+> [!note] Thirty defects have been found by verifying rather than by looking
 > S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a-c, S4.5a-c, S4.6a-c, S4.7a-d,
-> S4.8a-c, S4.9a, S4.9b, S5.2a and S5.3a were all found by *running* the thing being
+> S4.8a-c, S4.9a, S4.9b, S5.2a, S5.3a and S6.2a-c were all found by *running* the thing being
 > documented instead of trusting an existing comment or a remembered number. None of them would have
-> been caught by reading the code. Nineteen were invisible to a green test suite, two of them
+> been caught by reading the code. Twenty-one were invisible to a green test suite, two of them
 > on fixtures that could not have failed, and one — S4.2a — was invisible *because* the
 > code read like a correct implementation: clear docstring, named constants, a comment marking the
 > important line, all of it describing an intention rather than the behaviour. That is the
 > argument for the "Evidence" line on every tick.
+>
+> S6.2a is the odd one out and worth its own sentence: there the green suite **was** the
+> defect. Two tests asserted "there is no trained artifact", which was a property of every
+> machine in the world until somebody ran the script that makes one. A test can only be as
+> honest as the thing it holds fixed.
 >
 > | Defect | Found while | Would code review have caught it? |
 > |---|---|---|
@@ -120,6 +126,9 @@ so is cheaper than a reader assuming they were. The e2e figure in this table use
 > | S4.9b — the precomputed index rebuilt its expensive table per call | testing the docstring's premise at the scale the docstring names | No - it is correct code, in the wrong place, inside an object named for caching |
 > | S5.2a — three more scripts named in files the control did not scan | reading `.env.example` line by line while documenting deployment | No - the control existed, passed, and had the wrong scope |
 > | S5.3a — `React` matched "able to react quickly" | the validator written one story earlier, on its first run | No - S4.5a fixed the guard and left the membership list alone |
+> | S6.2a — the suite passed because nobody had run the script yet | training a model, then running the tests | No - the tests were green on every machine in the world until one was not |
+> | S6.2b — the trained model's silence was printed as a finding about the resume | reading the sentence a real resume produced | No - `if trained is not None` is the obvious condition, and was correct until an artifact existed |
+> | S6.2c — startup warmed everything except the model S6.2 had just added | timing the first request instead of the second | No - and it could not be reproduced in full mode, because `sentence-transformers` had already imported the cost |
 >
 > S4.3b, S4.4c and S4.5c are one defect three times, in three costumes: a count in the
 > README, a count in eleven vault files, four examples in docstrings. Prose that sits next
@@ -1277,10 +1286,84 @@ was rejected and why, and the worked numbers for one real example.
   names it. On the shipped data: **0 errors, 44 warnings, exit 0** — after S5.3a below.*
 
 
-- [ ] **S6.2 — `scripts/train_classifier.py`**
+- [x] **S6.2 — `scripts/train_classifier.py`**
   **AC:** trains the role classifier from the job corpus, reports held-out accuracy,
   writes the artifact where `classify.py` looks for it, and refuses to overwrite a
   better existing model with a worse one.
+  *Evidence 2026-08-31: all four clauses run, not reasoned about. **57.7% leave-one-out on
+  26 postings across 13 roles**, against 100% training accuracy — the script prints both
+  lines together, names all eleven misses, names the three single-posting roles that are
+  unlearnable by leave-one-out **by construction**, and repeats scikit-learn's own
+  objection to the corpus once instead of twenty-six times. `--dry-run` writes nothing;
+  planting a model claiming 99% makes a real run exit 1 with the file untouched, and
+  `--force` replaces it. The artifact is written where `classify.py` reads, and a test
+  reads both files from source to hold the one string they share. **12 tests**, all of
+  them against the temp directory `hidden_artifacts` supplies, and `main()` called in
+  process rather than as a subprocess precisely so it cannot write into the developer's
+  own `backend/artifacts/`.*
+
+  > [!warning] What this story does **not** buy
+  > A held-out number worth quoting. 26 postings over 13 roles is two examples per class,
+  > and there is no honest train/test split at that size. The trained model is also fitted
+  > on **job postings** and asked about **resumes**, and the gap shows: measured as a
+  > multiple of uniform (1/13), the winning score is 2.72–3.68× on postings and 1.32× on
+  > the sample resume. That is a corpus problem, and the corpus is S6.3. See
+  > [[Decision Log#D9 — The trained classifier ships, and defers to the profile classifier on resumes]].
+
+- [x] **S6.2a — Defect: the test suite passed because nobody had run the script yet** *(unplanned)*
+  Found by training a model and then running `pytest`.
+  **Cause:** two tests asserted "there is no trained artifact" — `confidence == 0.0` and
+  `_load_trained() is None`. Both were true on every machine in the world for as long as no
+  script could produce one. `artifacts/` is gitignored, so the suite passed on a clone,
+  passed in CI, and failed on the one machine where somebody had actually used the tool.
+  **Fix:** `hidden_artifacts`, a session-scoped autouse fixture pointing `settings.artifacts_dir`
+  at an empty temp directory — the same call `conftest.py` already makes for embeddings, and
+  for the same reason: a suite whose numbers depend on which large optional artefact happens
+  to be on disk is not measuring the code.
+  **AC:** the suite gives the same answer with and without a model on disk.
+  *Evidence 2026-08-31: full suite run in both states — **343 passed** both times. Before the
+  fixture the same two states gave 3 failed / 319 passed and 322 passed.*
+
+- [x] **S6.2b — Defect: the trained model's silence was printed as a finding about the resume** *(unplanned)*
+  Found by reading the sentence a real resume produced once a real model existed.
+  **Cause:** `predict()` fell back to the profile classifier when there was **no model**, not
+  when the model **had nothing to say** — the same condition until this story. A softmax
+  always returns a winner, so a resume the model has no opinion about still gets one, at
+  1.09× uniform. That prediction was returned anyway and `summary` rendered it as *"No skills
+  this tool recognises were found, so the resume could not be matched to a role. Add a skills
+  section…"* — both sentences false, the second advice acted on at a cost, over a resume whose
+  skill the ontology **had** recognised and which the profile classifier answered.
+  **Fix:** `predict()` routes on `has_a_prediction`, not on `is not None`, and the trained
+  backend gets thresholds in its own units — multiples of uniform, not an absolute 0.08 that
+  is arithmetically unreachable across thirteen classes.
+  **AC:** a backend with nothing to say stands aside for one that has something; neither
+  backend having an answer still says so.
+  *Evidence 2026-08-31, the weak fixture before and after: backend `trained` → `profile`,
+  summary "No skills this tool recognises were found…" → "This resume sits between Business
+  Analyst and Data Analyst…". The sample resume is unchanged, still answered by the trained
+  backend. This is S4.6a one level up: there the absence of an answer was presented as an
+  answer, here as a finding about the input.*
+
+- [x] **S6.2c — Defect: startup warmed every lazy resource except the one S6.2 had just added** *(unplanned)*
+  Found by timing the **first** request after `warmup()` rather than the second.
+  **Cause:** `_load_trained` is `lru_cache`d, so the artifact is unpickled once per process —
+  and `pipeline.warmup()` had no step for a file that could not exist when it was written, so
+  that "once" happened inside whichever request arrived first. Unpickling imports the whole of
+  scikit-learn.
+  **Fix:** `classify.warmup()`, called from `pipeline.warmup()`. It loads the artifact *and*
+  runs a prediction through **both** backends — touching a cache is not running the code,
+  which is the same lesson as the misspelt fuzzy string in S2.5a — and returns which backend
+  the machine will use, so `/api/health` can report `trained, 13 labels` or `profile, 13 roles`.
+  `smoke_test.py` warms before timing too; its `classify` line was printing 2062.6 ms of
+  scikit-learn import as the cost of classifying a resume.
+  **AC:** no student pays for a boot, and the health endpoint says which backend answered.
+  *Evidence 2026-08-31, hashing backend, sample resume: first upload after warmup
+  **1858.1 ms → 11.7 ms** (classify 1849.8 → 2.4), second upload 6.0 ms throughout. This is
+  S2.5a again at **39× the size**. It was invisible on the transformer backend, where the same
+  first upload cost 76 ms because `sentence-transformers` imports scikit-learn on its own
+  account — so the defect could only be reproduced in **degraded** mode, the mode this project
+  promises to keep usable. Four tests; two mutations, one of which caught an assertion of mine
+  that passed for the wrong reason and had to be moved to where it can fail.*
 
 - [ ] **S6.3 — `scripts/import_jobs.py`**
   **AC:** ingests postings from a CSV into `jobs.json`, validating every row against
