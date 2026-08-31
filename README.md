@@ -182,6 +182,24 @@ python scripts/train_classifier.py             # train and write the artifact
 and the model is trained on job postings while being asked about resumes. The reasoning
 is in [`docs/Role Classification`](docs/Role%20Classification.md).
 
+### Optional: grow the job corpus
+
+The 26 postings in `data/jobs.json` are hand-written, and they are the ceiling on every
+role number this project reports. `scripts/import_jobs.py` imports a real dataset — the
+column names of the Kaggle "LinkedIn Job Postings" export map with no configuration.
+
+```bash
+python scripts/import_jobs.py postings.csv --dry-run      # report only, write nothing
+python scripts/import_jobs.py postings.csv --append       # add to the shipped corpus
+python scripts/import_jobs.py postings.csv --rejects out.csv
+```
+
+Read the rejection summary rather than the accepted count. A posting's `category` is the
+label the classifier trains on, so a row whose role family cannot be determined is
+rejected rather than bucketed, and on a dataset with no category column that can be most
+of the file — the fix is `--column category=<your column>`. Re-run
+`train_classifier.py` afterwards; the model on disk was fitted on the old corpus.
+
 ---
 
 ## Configuration
@@ -268,9 +286,10 @@ backend/
     store.py      SQLite access, plain SQL, no ORM
     main.py       app assembly, CORS, lifespan warmup, error handler
   data/           skills, headings, action verbs, job corpus — all JSON/text
-  scripts/        smoke_test.py, e2e_check.py, validate_skills.py, train_classifier.py
+  scripts/        smoke_test.py, e2e_check.py, validate_skills.py,
+                  train_classifier.py, import_jobs.py
   artifacts/      generated models — not in git, see below
-  tests/          343 tests plus fixtures
+  tests/          374 tests plus fixtures
 frontend/
   src/
     routes/       six screens
@@ -291,7 +310,7 @@ without a server and reusable outside one.
 
 ```bash
 cd backend
-pytest -q                        # 343 unit and integration tests, and rising
+pytest -q                        # 374 unit and integration tests, and rising
 python scripts/smoke_test.py     # the pipeline, no server
 python scripts/e2e_check.py      # real HTTP against a running server
 
@@ -328,9 +347,16 @@ Start at [`docs/Home`](docs/Home.md). The working checklist is
 
 `backend/data/jobs.json` is a seed corpus written for development and demonstration. It
 is representative rather than live. Before using recommendations to advise real students
-about real openings, replace it with current postings — the schema is documented in
-`docs/Extending the Ontology`, and the file is validated against the same schema the app
-reads at startup.
+about real openings, replace it with current postings, using
+`python scripts/import_jobs.py <csv>` — that script validates every row by writing the
+finished corpus to a temp file and reading it back through the application's own loader,
+and reports the rows it rejected instead of dropping them.
+
+Nothing validates `jobs.json` at startup. Loading it skips a malformed row and logs a
+warning, which is the right behaviour for a request handler and is not a substitute for
+running the importer. The shape itself is defined by the `Job` dataclass in
+`backend/app/core/jobs_data.py`, and what each field costs when it is wrong is in
+[`docs/Job Recommendation`](docs/Job%20Recommendation.md).
 
 Resumes uploaded during testing are personal data. `backend/storage/` is git-ignored for
 that reason, and the delete endpoint removes a report and everything attached to it.

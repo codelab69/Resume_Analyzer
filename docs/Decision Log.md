@@ -272,6 +272,60 @@ for what its silence was reaching students as before this.
 
 ---
 
+## D10 — The importer refuses to invent a role label
+
+**Decision.** `scripts/import_jobs.py` (S6.3) takes a posting's `category` from a mapped CSV
+column, or infers it from the title against the role families the corpus already has, and
+**rejects the row** when neither works. It never falls back to a default, and inference is
+not allowed to create a family that does not already exist — only a mapped column can do
+that, because a column is where a human decided.
+
+The same script also refuses to write a corpus that drops a role family the app is serving
+today, unless `--force`, and validates its output by writing it to a temp file and reading
+it back through `jobs_data.load_jobs`, comparing every field.
+
+**Why.** `category` is not a display field. It is the label the classifier trains on, the
+key the role profiles are built from, and a filter facet in the UI — three different things
+downstream of one string.
+
+`load_jobs` defaults a missing category to `"General"`, and that default is harmless at the
+size it was written for. On 26 curated postings it never fires. Point the importer at
+20,000 rows and it becomes the destination for every posting the importer failed to
+understand — a role family assembled out of failures, which the next run of
+`train_classifier.py` learns as if somebody had chosen it. The corpus would grow and the
+classifier would get worse, and both numbers would look like progress.
+
+**Alternative.** Three, all rejected.
+
+*Default to `"General"` and let the operator clean it up later* — the failure above,
+described as a workflow.
+
+*Guess harder: a keyword table mapping titles onto families* — this is a classifier, written
+by hand, with no held-out set and no way to notice when it goes stale. The alias table that
+does exist is deliberately short and each entry is a claim somebody can read; anything it
+cannot decide is a rejection, which is visible.
+
+*Accept everything and validate later* — "later" is after the model has been trained on it.
+
+**Evidence, 2026-08-31.** On a Kaggle-shaped CSV with no category column, the run rejects
+every title the corpus has no family for and says so by count and by line number; the whole
+row survives in `--rejects` with its original columns, so the fix is a mapping flag rather
+than a re-export.
+
+Two properties of the inference are held by tests because both were nearly wrong. Matching
+is on word boundaries — without the padding `"Data Analyst"` matches inside **"Metadata
+Analyst"**, and a mislabelled posting is a training label, not a bad search result. And the
+longest match wins, so `"Full Stack Developer (Backend)"` is a Full Stack Developer; where
+two families match at the same length there is nothing to prefer, and the row is rejected as
+ambiguous rather than decided by a coin toss.
+
+The read-back is the other half of the same idea. There is no schema document for the job
+corpus — `jobs_data.load_jobs` *is* the schema — so the importer proves its output by
+running the application's own loader over it. Writing it turned up three defects in that
+loader (S6.3a-c), which is what a second reader is for.
+
+---
+
 ## Still to record
 
 This note was started when S2.4 needed somewhere to put its numbers, so it currently

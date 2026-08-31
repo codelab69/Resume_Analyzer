@@ -23,6 +23,9 @@ Do not start until all of these are true. Testing a build that does not run wast
 - [ ] `GET /api/health` returns 200
 - [ ] The `components` block in that response lists `skills`, `action_verbs`, `embeddings`, `jobs` and `role_classifier` with no `failed:` prefix
 - [ ] `role_classifier` is recorded below — `trained` and `profile` are different implementations, so results are no more comparable across them than across embedding backends
+- [ ] `jobs` reports **26 postings indexed**, or the real number is recorded below — every
+      role, recommendation and match figure in this plan is measured against a corpus, and
+      `scripts/import_jobs.py` means that corpus is no longer a constant
 - [ ] Which mode is under test is recorded below — results are not comparable across modes
 
 **Semantic backend for this run:** ☐ `transformer` (full) ☐ `hashing` (degraded)
@@ -43,7 +46,7 @@ cd backend
 python -m pytest -q
 ```
 
-- [ ] All tests pass (**expected: 120 passed**)
+- [ ] All tests pass (**expected: 374 passed** as of 2026-08-31, and rising every story — the thing to check is that nothing failed, not that the number matches)
 - [ ] No test was skipped unexpectedly (`-rs` lists reasons)
 - [ ] Runtime is under 10 seconds — a sudden jump means something is loading a model it should not
 

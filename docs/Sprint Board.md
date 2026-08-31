@@ -50,7 +50,7 @@ same bar every time.
 | [[#Sprint 3 — Architecture notes]] | The "how it fits together" half of the vault | Complete |
 | [[#Sprint 4 — Algorithm notes]] | Every algorithm written up for the viva | **Complete** — 9 notes, 13 defects, 2026-08-29 |
 | [[#Sprint 5 — Guides and reference]] | A stranger can set it up unaided | In progress |
-| [[#Sprint 6 — Maintenance tooling]] | The data files can be grown safely | In progress — S6.1 and S6.2 done |
+| [[#Sprint 6 — Maintenance tooling]] | The data files can be grown safely | In progress — S6.1, S6.2 and S6.3 done |
 | [[#Sprint 7 — Release hardening]] | Demo-day proof | Not started |
 
 ---
@@ -62,13 +62,14 @@ that say otherwise in their own right-hand column:
 
 | Check | Result | Measured |
 |---|---|---|
-| `pytest` | **343 passed** in 8.1 s (120 at the start of Sprint 1, 322 before S6.2). Run twice, once with `artifacts/role_classifier.joblib` present and once with it moved away — same 343 both times, which is the point of S6.2a | 2026-08-31 |
-| `scripts/smoke_test.py` | passed, TOTAL **8.0 ms** warm. Not comparable with the 201 ms recorded on 2026-08-29: that run was cold, and after S6.2c the script warms up before it times anything, because a cold `classify` stage was printing 2062.6 ms of scikit-learn import as if it were the cost of classifying | 2026-08-31 |
+| `pytest` | **374 passed** in 9.1 s (120 at the start of Sprint 1, 322 before S6.2, 343 before S6.3). Run twice, once with `artifacts/role_classifier.joblib` present and once with it moved away — same count both times, which is the point of S6.2a | 2026-08-31 |
+| `scripts/smoke_test.py` | passed, TOTAL **6.8 ms** warm. Not comparable with the 201 ms recorded on 2026-08-29: that run was cold, and after S6.2c the script warms up before it times anything, because a cold `classify` stage was printing 2062.6 ms of scikit-learn import as if it were the cost of classifying | 2026-08-31 |
+| `scripts/import_jobs.py`, round trip | the shipped 26 postings exported to CSV and imported back: **26 read, 26 accepted, 0 rejected, every field identical** through `load_jobs`. The written file spells out `"url": null`, which the hand-written corpus omits; nothing else differs | 2026-08-31 |
 | `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed, on the transformer backend**, with a trained classifier on disk | 2026-08-31 |
 | `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, `role_classifier: trained, 13 labels`, notes empty | 2026-08-31 |
 | `npm run build` | clean, no warnings, 1052 modules, largest chunk `charts` 368 kB, 3.5 s | 2026-08-29, not re-run since |
 | All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 29/29 | 2026-08-27, not re-run since |
-| Vault link integrity | **387 links checked: 371 resolve, 16 point at notes still on this board (`Troubleshooting` and `Glossary`), 0 broken anchors.** One link written in this story was broken and fixed: a wikilink wrapped across two lines, which Obsidian does not match — the same failure mode as the `not yet written` marker that wrapped in S5.2a. The 2026-08-27 run checked 237 | 2026-08-31 |
+| Vault link integrity | **392 links checked: 376 resolve, 16 point at notes still on this board (`Troubleshooting`, `Glossary`, and the literal `[[link]]` two notes use as an example), 0 broken anchors, 0 wrapped across a line.** The wrapped-link check exists because S6.2 wrote one: a wikilink split over two lines, which Obsidian does not match — the same failure mode as the `not yet written` marker in S5.2a. The 2026-08-27 run checked 237 | 2026-08-31 |
 
 The right-hand column exists because two of these rows — `npm run build` and the clean-venv
 run — were not re-run today, and saying so is cheaper than a reader assuming they were. The
@@ -82,11 +83,11 @@ e2e figure in this table used to read 30; it had never been true — see S4.4c.
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Thirty defects have been found by verifying rather than by looking
+> [!note] Thirty-four defects have been found by verifying rather than by looking
 > S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a-c, S4.5a-c, S4.6a-c, S4.7a-d,
-> S4.8a-c, S4.9a, S4.9b, S5.2a, S5.3a and S6.2a-c were all found by *running* the thing being
+> S4.8a-c, S4.9a, S4.9b, S5.2a, S5.3a, S6.2a-c and S6.3a-d were all found by *running* the thing being
 > documented instead of trusting an existing comment or a remembered number. None of them would have
-> been caught by reading the code. Twenty-one were invisible to a green test suite, two of them
+> been caught by reading the code. Twenty-four were invisible to a green test suite, two of them
 > on fixtures that could not have failed, and one — S4.2a — was invisible *because* the
 > code read like a correct implementation: clear docstring, named constants, a comment marking the
 > important line, all of it describing an intention rather than the behaviour. That is the
@@ -129,11 +130,18 @@ e2e figure in this table used to read 30; it had never been true — see S4.4c.
 > | S6.2a — the suite passed because nobody had run the script yet | training a model, then running the tests | No - the tests were green on every machine in the world until one was not |
 > | S6.2b — the trained model's silence was printed as a finding about the resume | reading the sentence a real resume produced | No - `if trained is not None` is the obvious condition, and was correct until an artifact existed |
 > | S6.2c — startup warmed everything except the model S6.2 had just added | timing the first request instead of the second | No - and it could not be reproduced in full mode, because `sentence-transformers` had already imported the cost |
+> | S6.3a — a string of requirements was indexed one letter at a time | writing an importer against the loader and asking what each field accepts | Unlikely - `list(item.get("requirements", []))` is idiomatic, and correct for every value the shipped corpus contains |
+> | S6.3b — one unreadable cell lost all 26 postings, in a function whose comment promised the opposite | feeding the loader the rows a CSV import actually produces | Possibly, by someone who checked the `except` against the coercions three lines above it |
+> | S6.3c — two postings with one id loaded fine and one could not be opened | asking whether the importer had to guarantee unique ids, and why | No - `{job.id: job for job in load_jobs()}` is the obvious line and says nothing about collisions |
+> | S6.3d — the README described a validation step that had never existed | reading the paragraph about replacing the corpus while writing the tool it described | No - there is no code to review; it is a claim in prose, and the sentence is plausible |
 >
-> S4.3b, S4.4c and S4.5c are one defect three times, in three costumes: a count in the
-> README, a count in eleven vault files, four examples in docstrings. Prose that sits next
-> to code and is never run. The remedy has never once been "check more carefully" - it has
-> been a test, three times, and all three now exist.
+> S4.3b, S4.4c, S4.5c and S6.3d are one defect four times, in four costumes: a count in the
+> README, a count in eleven vault files, four examples in docstrings, and a sentence in the
+> README describing a safety net nobody had built. Prose that sits next to code and is
+> never run. For the first three the remedy was a test, three times, and all three now
+> exist. S6.3d is the one with no control: a *claim* about behaviour is not a path, a count
+> or an example, and nothing in the suite can hold it. It was caught by writing the tool
+> the sentence turned out to be describing.
 
 ---
 
@@ -1365,10 +1373,113 @@ was rejected and why, and the worked numbers for one real example.
   promises to keep usable. Four tests; two mutations, one of which caught an assertion of mine
   that passed for the wrong reason and had to be moved to where it can fail.*
 
-- [ ] **S6.3 — `scripts/import_jobs.py`**
+- [x] **S6.3 — `scripts/import_jobs.py`**
   **AC:** ingests postings from a CSV into `jobs.json`, validating every row against
   the same schema the app reads, and reporting rejected rows rather than silently
   dropping them.
+  *Evidence 2026-08-31: all three clauses run. **"The same schema the app reads" is not a
+  document, it is `jobs_data.load_jobs`**, so the script validates by finishing: the corpus
+  it is about to write goes to a temp file, comes back through the real loader, and every
+  field of every posting is compared with what was written. A disagreement prints the
+  posting and the field and writes nothing. Proved on real data by a **round trip** — the
+  shipped 26 postings exported to CSV and imported back, 26 accepted, 0 rejected, field for
+  field identical. On a Kaggle-shaped CSV all ten columns map with no `--column` flag,
+  because `jobs_data.py` tells the reader to download that dataset by name and an importer
+  that then needs six flags to read it has not finished the sentence. Rejections are counted
+  by reason and located by **line in the file**, not row number — those differ the moment a
+  description contains a newline, which on real data is always. `--rejects` writes every
+  rejected row out with its original columns, so a 4,000-row rejection is a file you can
+  sort. **31 tests**, eleven mutations, each failing the test that names it.*
+
+  > [!important] What this story refuses to do, and why that is the story
+  > `load_jobs` defaults a missing `category` to `"General"`. On 26 hand-written postings
+  > that default never fires. On a 20,000-row import it would collect every posting the
+  > importer failed to understand into one role family — and `category` is the **label the
+  > classifier trains on**, so the model would learn "General" as a real role from a bucket
+  > of everything nobody could classify.
+  >
+  > So the importer derives a family from a mapped column, or from the title against the
+  > families the corpus already has, and **rejects the row** when neither works. It cannot
+  > invent a label. The Kaggle dataset has no category column at all, so importing it
+  > rejects every title the corpus has no family for, loudly, with a count — and the fix is
+  > `--column category=<your column>`, where a human decided. See
+  > [[Decision Log#D10 — The importer refuses to invent a role label]].
+
+  > [!warning] What this story does **not** buy
+  > A bigger corpus. It buys the ability to have one safely. The shipped `data/jobs.json` is
+  > still the 26 hand-written postings, so every number in
+  > [[Role Classification]] still carries n=26 — including the 57.7% leave-one-out from
+  > S6.2. Running this script against a real dataset is a decision about data, not a task,
+  > and it belongs to whoever is willing to check what comes out.
+
+- [x] **S6.3a — Defect: a string of requirements was indexed one letter at a time** *(unplanned)*
+  Found by writing the importer against the loader and asking, field by field, what each one
+  actually accepts.
+  **Cause:** `requirements=list(item.get("requirements", []))`. On a list that is correct.
+  On a string — which is what a CSV cell is, and what a person hand-editing the file writes —
+  `list("Python, SQL")` is eleven single characters. Nothing raised, nothing was logged, and
+  each character became its own line of `searchable_text`, which is the text BM25 indexes.
+  **Fix:** `_requirements()`. A list becomes a list of strings; a string is **one**
+  requirement; anything else is the empty default. Splitting a string on a guessed separator
+  stays in the importer, which can see the source column, instead of the loader, which would
+  be inventing structure the file does not claim.
+  **AC:** no field of a posting is silently reshaped into something else.
+  *Evidence 2026-08-31: `requirements: "Python, SQL"` → `['P','y','t','h','o','n',',',' ','S','Q','L']`
+  before, `['Python, SQL']` after. Restoring `list(value)` fails
+  `test_a_string_requirement_is_one_requirement_not_eleven_letters` and nothing else.*
+
+- [x] **S6.3b — Defect: one unreadable cell lost all 26 postings** *(unplanned)*
+  Found by feeding the loader the rows a CSV import actually produces.
+  **Cause:** the loop caught `KeyError`, under a comment reading *"Skip malformed rows
+  rather than failing the whole corpus - a 20,000-row import will always contain a few bad
+  records."* It kept that promise for one of the four ways a row can be wrong. `float("3+
+  years")` raises `ValueError`, `list(7)` raises `TypeError`, and a row that is not an
+  object at all raises `AttributeError` — none of them caught, all of them straight out of
+  the loader and into the request handler. Worse: `lru_cache` does not cache an exception,
+  so the failure was paid again on **every** request rather than once.
+  **Fix:** catch all four, name the exception type in the warning, and skip the row.
+  **AC:** the comment is true — one bad row costs one posting.
+  *Evidence 2026-08-31: three postings, the middle one with `experience_years: "3+ years"`
+  — `ValueError` and zero postings before, two postings and one logged skip after. Narrowing
+  the `except` back to `KeyError` fails
+  `test_one_unreadable_row_does_not_take_the_corpus_with_it`. This is the third time on this
+  board that a comment described an intention rather than the behaviour, after S4.2a and
+  S4.7c.*
+
+- [x] **S6.3c — Defect: two postings with one id, and only one could be opened** *(unplanned)*
+  Found by asking why the importer needs to guarantee unique ids, and what happens when
+  something else does not.
+  **Cause:** `jobs_by_id()` is `{job.id: job for job in load_jobs()}`. Duplicate ids do not
+  collide in `load_jobs` — both postings load, both get recommended, both get rendered as
+  cards — they collide in the dict, silently, last one wins. The student clicks one card and
+  the detail endpoint hands them the other posting.
+  **Fix:** `load_jobs` drops a repeated id with a warning, so
+  `len(load_jobs()) == len(jobs_by_id())` holds for any corpus, including a hand-edited one.
+  A posting that is not listed cannot be mis-opened; a posting that is listed and opens
+  something else is a wrong answer.
+  **AC:** every id in a recommendation is a promise the posting exists.
+  *Evidence 2026-08-31: two postings sharing `job-1` gave `len(load_jobs()) == 2` and
+  `len(jobs_by_id()) == 1` before, 1 and 1 after. The invariant is asserted against the
+  shipped corpus, not only against a fixture. Removing the check fails the importer's
+  read-back tripwire, which is the second place the same fact is enforced.*
+
+- [x] **S6.3d — Defect: the README described a validation step that had never existed** *(unplanned)*
+  Found by reading the README's own paragraph about replacing the job corpus, while writing
+  the tool it turns out to have been describing.
+  **Cause:** *"the file is validated against the same schema the app reads at startup."*
+  Nothing did. Startup calls `load_jobs`, which skips a bad row and logs a warning — correct
+  for a request handler, and not validation. The sentence even used this story's AC wording,
+  so it reads as a description of `import_jobs.py` written while `import_jobs.py` did not
+  exist. It pointed at `Extending the Ontology` for the schema, which documents the **skills**
+  ontology and says nothing about a posting.
+  **Fix:** the paragraph names the importer, says plainly that nothing validates the corpus
+  at startup, and points at the `Job` dataclass for the shape.
+  **AC:** the README does not describe a safety net that is not there.
+  *Evidence 2026-08-31: this is S4.6c's shape without a file path in it — prose about a tool
+  that had never been written — which is why `TestScriptPathsInTheCode` could not catch it.
+  That test checks paths a reader can follow; this was a **claim** a reader can rely on, and
+  there is no control for those. It is the fourth entry in the S4.3b family: prose beside
+  code that nothing runs.*
 
 - [ ] **S6.4 — `scripts/tune_weights.py`**
   **AC:** sweeps the four matcher weights over a labelled set and reports which

@@ -37,10 +37,11 @@ This is the standard retrieve-then-rerank pattern that production search uses.
 
 > [!note] At 26 postings, stage 1 filters nothing
 > `RERANK_POOL` is 200 and the corpus has 26, so every posting reaches stage 2 today. The
-> two-stage structure is architecture for a corpus this project does not have yet — which
-> `scripts/import_jobs.py` would supply, and which is **not yet written**. The design is
-> right and the measurement below is what makes it worth keeping; it is not currently doing
-> any work, and saying so is cheaper than letting a reader assume otherwise.
+> two-stage structure is architecture for a corpus this project does not have yet.
+> `scripts/import_jobs.py` is the way to get one — it exists as of S6.3 — but it has not been
+> pointed at a real dataset, and the shipped corpus is still the 26 hand-written postings.
+> The design is right and the measurement below is what makes it worth keeping; it is not
+> currently doing any work, and saying so is cheaper than letting a reader assume otherwise.
 
 ---
 
@@ -204,6 +205,114 @@ top-10. On this corpus: `category="Data Scientist"` → 2 results (there are onl
 
 ---
 
+## Growing the corpus — S6.3
+
+Everything on this page is measured on 26 postings, and the sentence "the corpus is the
+limit" appears in six vault notes. `scripts/import_jobs.py` is the way past it.
+
+```bash
+python scripts/import_jobs.py postings.csv --dry-run
+python scripts/import_jobs.py postings.csv --limit 20000 --force
+python scripts/import_jobs.py postings.csv --append
+python scripts/import_jobs.py postings.csv --column category=job_family
+python scripts/import_jobs.py postings.csv --rejects rejected.csv
+```
+
+The ten Kaggle "LinkedIn Job Postings" column names map with no flags, because `jobs_data.py`
+tells the reader to download that dataset by name and an importer that then needs six flags
+to read it has not finished the sentence.
+
+### Validated by running the loader, not by describing it
+
+The story's AC says *"validating every row against the same schema the app reads"*. There is
+no schema file to validate against — `jobs_data.load_jobs` **is** the schema, and a second
+copy of its rules in the importer would agree with it only until one of the two was edited.
+
+So the importer finishes by running the original over its own output: the corpus goes to a
+temp file, comes back through `load_jobs`, and every field of every posting is compared with
+what was written. A mismatch names the posting and the field, and nothing is saved.
+
+> [!check] Proved on the data that ships
+> The 26 hand-written postings exported to CSV and imported back: **26 read, 26 accepted, 0
+> rejected, every field identical**. The written file additionally spells out `"url": null`,
+> which the hand-written corpus omits; nothing else differs.
+
+Rejections are counted by reason and located by **line in the file** rather than row number.
+Those two are the same only until a description contains a newline, which on real data is
+always. `--rejects` writes every rejected row out with its original columns beside a
+`reject_reason`, so a 4,000-row rejection is a file you can sort rather than a number you
+have to trust.
+
+What it refuses to do — invent a `category`, because `category` is the label the classifier
+trains on — is [[Decision Log#D10 — The importer refuses to invent a role label]].
+
+---
+
+## Three things the loader was doing quietly
+
+Writing an importer means asking, field by field, what the loader actually accepts. It
+accepts more than it should, in three different directions. All three were invisible to a
+green 343-test suite.
+
+### S6.3a — a string of requirements was indexed one letter at a time
+
+```python
+requirements=list(item.get("requirements", []))
+```
+
+Correct for a list. A CSV cell is a string, and so is what a person hand-editing the corpus
+writes, and `list("Python, SQL")` is:
+
+```
+['P', 'y', 't', 'h', 'o', 'n', ',', ' ', 'S', 'Q', 'L']
+```
+
+Eleven requirements. Each one becomes its own line of `searchable_text`, which is the text
+BM25 indexes — so the posting was retrievable by alphabet. Nothing raised and nothing was
+logged, because `list()` on a string is a completely valid expression.
+
+`_requirements()` now returns a list of strings for a list, `[value]` for a string, and the
+empty default for anything else. Splitting a string on a guessed separator stays in the
+importer, which can see the source column; here it would be inventing structure the file does
+not claim.
+
+### S6.3b — one unreadable cell lost all 26 postings
+
+The loop caught `KeyError`, under this comment:
+
+> Skip malformed rows rather than failing the whole corpus - a 20,000-row import will always
+> contain a few bad records.
+
+It kept that promise for one of the four ways a row can be wrong:
+
+| Bad cell | Raises | Caught before S6.3b |
+|---|---|---|
+| `"title"` missing | `KeyError` | yes |
+| `experience_years: "3+ years"` | `ValueError` | **no** |
+| `requirements: 7` | `TypeError` | **no** |
+| the row is a string, not an object | `AttributeError` | **no** |
+
+The three uncaught ones are precisely what a CSV import produces. And `lru_cache` does not
+cache an exception, so the failure was not paid once at startup — it was paid again on every
+request that followed.
+
+This is the third defect on this project where a comment described an intention rather than
+the behaviour, after [[Analysis Pipeline|S4.2a]] and [[ATS Scoring|S4.7c]]. The remedy is the
+same one every time: a test that runs the sentence.
+
+### S6.3c — two postings with one id, and only one could be opened
+
+`jobs_by_id()` is `{job.id: job for job in load_jobs()}`. Duplicate ids do not collide in
+`load_jobs` — both postings load, both are ranked, both are rendered as cards. They collide
+in the dict, silently, and last one wins. The student clicks one card and the detail endpoint
+hands them the other posting.
+
+`load_jobs` now drops a repeated id with a warning, so `len(load_jobs()) == len(jobs_by_id())`
+holds for any corpus, hand-edited included. A posting that is not listed cannot be
+mis-opened; a posting that is listed and opens something else is a wrong answer.
+
+---
+
 ## Known limits, stated rather than hidden
 
 - **26 postings, so stage 1 is inert** — see the note at the top. Everything here is measured
@@ -257,6 +366,32 @@ choice between them is a performance decision recorded here and nowhere else.
 The first mutation also fails the doctest control from S4.5c, because `build_query` carries
 an example — the third time that control has caught a regression in a module it was not
 written for.
+
+### S6.3 — the importer and the loader
+
+`backend/tests/test_core.py` — `TestImportJobs` (26) and `TestJobCorpusLoader` (5), **31
+new**. The importer's fixture carries no `importorskip`, unlike the trainer's: it is stdlib
+and `jobs_data` only, and growing the corpus is not an ML extra.
+
+| Mutation | Fails |
+|---|---|
+| `requirements` back to `list(value)` | `test_a_string_requirement_is_one_requirement_not_eleven_letters` |
+| Catch `KeyError` only, as before S6.3b | `test_one_unreadable_row_does_not_take_the_corpus_with_it` |
+| Stop rejecting a repeated id | `test_the_tripwire_notices_a_posting_the_loader_drops` |
+| An unreadable experience cell becomes `0` | `test_every_rejection_is_counted_named_and_located` |
+| An undecidable title becomes `"General"` | `test_every_rejection_is_counted_named_and_located` |
+| Skip the read-back tripwire | `test_the_output_is_read_back_through_the_real_loader` |
+| Match family names without word boundaries | `test_a_family_name_must_match_on_word_boundaries` |
+| Write even when role families disappear | `test_it_refuses_to_drop_role_families_the_corpus_has_today` |
+| Generated ids always start at 1 | `test_append_keeps_the_old_postings_and_reuses_none_of_their_ids` |
+| Write a fresh envelope instead of keeping `notes` | `test_the_notes_the_corpus_carries_survive_an_import` |
+| Report the row number as if it were the line | `test_the_reported_line_is_the_line_in_the_file` |
+
+The word-boundary mutation survived its first test and had to be rewritten. The test asked
+whether `"Retail Engineer"` matches `"Machine Learning Engineer"`, which it does not either
+way; the real failure is `"Data Analyst"` inside **"Metadata Analyst"**, which is a job title
+somebody actually posts. A mutation that survives is a test that was measuring the wrong
+thing, and it is worth more than the ten that passed.
 
 ---
 

@@ -29,8 +29,9 @@ So this script reports two numbers and labels them plainly:
                              the two is visible, because that gap is the story.
 
 Neither belongs in a report without the sample size next to it. The path to a
-number worth quoting is more postings, which is scripts/import_jobs.py
-(not yet written; it is S6.3 on the board).
+number worth quoting is more postings, which is scripts/import_jobs.py. That
+script exists; it has not been pointed at a real dataset, so the corpus these
+numbers come from is still the 26 hand-written postings.
 
 REFUSING TO MAKE THINGS WORSE
 -----------------------------

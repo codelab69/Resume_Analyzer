@@ -233,7 +233,7 @@ been written:
 | Named at | Script | Where the reader meets it |
 |---|---|---|
 | `classify.py` | `train_classifier.py` | a log line printed at **every boot** without an artifact |
-| `jobs_data.py` | `import_jobs.py` | the module docstring, and a user-facing `FileNotFoundError` |
+| `jobs_data.py` | `import_jobs.py` | the module docstring, and a user-facing `FileNotFoundError` (both plain instructions since S6.3) |
 | `matcher.py` | `tune_weights.py` | the module docstring, as how to justify the weights |
 
 The `FileNotFoundError` one is the worst: it fires when the job corpus is missing, and offers
@@ -254,6 +254,9 @@ holding the rule. S6.2 is the first of the three, and it went exactly that way: 
 test immediately failed on a **new** unmarked reference the new script had introduced — its
 own docstring pointing at `scripts/import_jobs.py` as the way to get a corpus worth quoting
 an accuracy from.
+
+S6.3 closed that one. Two of the three markers are now instructions that work; the last is
+`tune_weights.py` in `matcher.py` and `.env.example`, which is S6.4.
 
 ---
 

@@ -201,9 +201,17 @@ grow it to full coverage, download the **ESCO** skills taxonomy (free,
 validator, which is exactly the situation it was written for: a machine-generated merge is
 where duplicate names and colliding aliases actually come from.
 
-The job corpus grows separately — `scripts/import_jobs.py`, which is **not yet written**
-([[Sprint Board|S6.3]]). Everything [[Role Classification]] says about 26 postings and three
-single-posting roles is waiting on that.
+The job corpus grows separately, through `scripts/import_jobs.py` ([[Sprint Board|S6.3]]).
+It exists now; the corpus it writes into is still the 26 hand-written postings, because
+running it against a real dataset is a decision about data rather than a task. Everything
+[[Role Classification]] says about 26 postings and three single-posting roles is waiting on
+somebody making that decision, not on the tool.
+
+The two validators are deliberately different shapes, and the difference is the point. This
+one checks a file against rules written down beside it. The importer checks its output by
+**running the application's own loader over it** — because for the job corpus there is no
+schema document to check against: `jobs_data.load_jobs` *is* the schema, and a second copy of
+it would agree only until one of the two was edited.
 
 ---
 

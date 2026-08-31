@@ -10,6 +10,8 @@ skills, embeddings.
 from __future__ import annotations
 
 import ast
+import contextlib
+import csv
 import json
 import pathlib
 import re
@@ -1876,6 +1878,645 @@ class TestTrainClassifier:
         joblib.dump({"labels": ["Backend Developer"]}, path)
         assert train_classifier_module.existing_score() is None
 
+
+# ---------------------------------------------------------------------------
+# S6.3 - the importer, and the loader it was written against
+# ---------------------------------------------------------------------------
+
+
+@contextlib.contextmanager
+def _corpus_at(jobs_data, path):
+    """Point the job loader at `path` for the duration of a block.
+
+    A local copy of `import_jobs.corpus_at` on purpose: the tests that check
+    the script restores the module global cannot use the script's own helper to
+    do it. Both caches are cleared on the way out, or a temp corpus cached here
+    would answer for `data/jobs.json` in every test that followed.
+    """
+    original = jobs_data.JOBS_FILE
+    jobs_data.JOBS_FILE = path
+    jobs_data.load_jobs.cache_clear()
+    jobs_data.jobs_by_id.cache_clear()
+    try:
+        yield
+    finally:
+        jobs_data.JOBS_FILE = original
+        jobs_data.load_jobs.cache_clear()
+        jobs_data.jobs_by_id.cache_clear()
+
+
+class TestImportJobs:
+    """S6.3. The script that grows the corpus every other number depends on.
+
+    `main()` is called in process, like `TestTrainClassifier`, and every test
+    here passes `--out` into `tmp_path`. Nothing in this class may touch
+    `data/jobs.json`: it is the file the whole suite reads, and a test that
+    rewrote it would change the answer of every test that ran afterwards.
+    """
+
+    DESCRIPTION = (
+        "Own the payments service end to end: REST APIs in Python, PostgreSQL "
+        "schema design, and the pipeline that ships it."
+    )
+
+    @classmethod
+    def _row(cls, **overrides) -> dict:
+        """One valid CSV row, in the columns a Kaggle export actually has."""
+        row = {
+            "job_id": "",
+            "title": "Backend Developer",
+            "company_name": "Northwind Systems",
+            "location": "Chennai",
+            "formatted_work_type": "FULL_TIME",
+            "formatted_experience_level": "Entry level",
+            "description": cls.DESCRIPTION,
+            "skills_desc": "Python; PostgreSQL; Docker",
+            "job_posting_url": "",
+        }
+        row.update(overrides)
+        return row
+
+    @staticmethod
+    def _csv(path, rows, header=None):
+        header = header or list(rows[0])
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=header)
+            writer.writeheader()
+            writer.writerows(rows)
+        return path
+
+    @staticmethod
+    def _corpus(path) -> list:
+        """Read a written corpus back with the app's loader, not with json."""
+        from app.core import jobs_data
+
+        with _corpus_at(jobs_data, path):
+            return list(jobs_data.load_jobs())
+
+    # --- AC: ingests postings from a CSV into jobs.json --------------------
+
+    def test_a_csv_becomes_a_corpus_the_app_can_load(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        source = self._csv(tmp_path / "postings.csv", [
+            self._row(title="Backend Developer"),
+            self._row(title="Frontend Developer", skills_desc="React\nTypeScript"),
+        ])
+        out = tmp_path / "jobs.json"
+
+        assert import_jobs_module.main([str(source), "--out", str(out)]) == 0
+        capsys.readouterr()
+
+        jobs = self._corpus(out)
+        assert [job.title for job in jobs] == ["Backend Developer", "Frontend Developer"]
+        assert [job.category for job in jobs] == ["Backend Developer", "Frontend Developer"]
+        # Generated, sequential, and unique - the three things `jobs_by_id`
+        # needs and a CSV without an id column will not give it.
+        assert [job.id for job in jobs] == ["job-00001", "job-00002"]
+        assert jobs[1].requirements == ["React", "TypeScript"]
+
+    def test_the_shipped_corpus_survives_a_round_trip(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        """Export the 26 real postings to CSV, import them back, compare.
+
+        The strongest form of "validated against the same schema the app
+        reads": the importer's output has to be indistinguishable from the file
+        the application already serves, field by field, on data nobody wrote
+        for this test.
+        """
+        from app.core import jobs_data
+
+        before = jobs_data.load_jobs()
+        source = self._csv(tmp_path / "postings.csv", [{
+            "job_id": job.id, "title": job.title, "company_name": job.company,
+            "location": job.location, "category": job.category,
+            "formatted_work_type": job.employment_type,
+            "experience_years": job.experience_years,
+            "description": job.description,
+            # Newline is the separator the importer splits on, and the one a
+            # requirement can never itself contain.
+            "skills_desc": "\n".join(job.requirements),
+            "job_posting_url": job.url or "",
+        } for job in before])
+
+        out = tmp_path / "jobs.json"
+        assert import_jobs_module.main([str(source), "--out", str(out)]) == 0
+        assert "Read 26 row(s), accepted 26." in capsys.readouterr().out
+
+        after = self._corpus(out)
+        assert [job.to_dict() for job in after] == [job.to_dict() for job in before]
+
+    def test_kaggle_column_names_map_without_being_told(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        """`jobs_data.py` tells the reader to download that dataset by name.
+
+        An importer that then needs six `--column` flags to read it has not
+        finished the sentence.
+        """
+        source = self._csv(tmp_path / "postings.csv", [self._row()])
+        assert import_jobs_module.main(
+            [str(source), "--out", str(tmp_path / "jobs.json")]
+        ) == 0
+
+        output = capsys.readouterr().out
+        for line in ("title             <- title",
+                     "company           <- company_name",
+                     "employment_type   <- formatted_work_type",
+                     "experience_years  <- formatted_experience_level",
+                     "requirements      <- skills_desc",
+                     "url               <- job_posting_url"):
+            assert line in output, output
+
+    def test_an_explicit_mapping_wins_and_a_typo_is_refused(
+        self, import_jobs_module, tmp_path
+    ):
+        source = self._csv(tmp_path / "postings.csv", [
+            self._row(**{"description": self.DESCRIPTION, "skills_desc": "ignored"}),
+        ])
+        # A misspelt column name is caught against the header rather than
+        # leaving that field quietly empty in twenty thousand postings.
+        with pytest.raises(SystemExit) as raised:
+            import_jobs_module.main([str(source), "--out", str(tmp_path / "a.json"),
+                                     "--column", "requirements=skils_desc"])
+        assert "skils_desc" in str(raised.value)
+
+        assert import_jobs_module.main(
+            [str(source), "--out", str(tmp_path / "b.json"),
+             "--column", "requirements=description"]
+        ) == 0
+        assert self._corpus(tmp_path / "b.json")[0].requirements == [self.DESCRIPTION]
+
+    # --- AC: validated against the same schema the app reads ---------------
+
+    def test_the_output_is_read_back_through_the_real_loader(
+        self, import_jobs_module, tmp_path, capsys, monkeypatch
+    ):
+        """The tripwire, tripped.
+
+        Simulates the drift it exists for: the importer's own idea of a
+        requirements list stops matching the loader's. Nothing is written, and
+        the run says which field disagreed.
+        """
+        source = self._csv(tmp_path / "postings.csv", [self._row()])
+        out = tmp_path / "jobs.json"
+
+        monkeypatch.setattr(import_jobs_module, "parse_requirements",
+                            lambda value: value or "")
+        assert import_jobs_module.main([str(source), "--out", str(out)]) == 1
+
+        output = capsys.readouterr().out
+        assert "does not survive its own loader" in output
+        assert "requirements" in output
+        assert not out.exists(), "a corpus the loader disagrees with was written"
+
+    def test_the_tripwire_names_the_posting_and_the_field(self, import_jobs_module):
+        payload = {"jobs": [{
+            "id": "job-1", "title": "Backend Developer", "company": "X",
+            "location": "Chennai", "category": "Backend Developer",
+            "employment_type": "Full-time", "experience_years": 0.0,
+            "description": "d", "requirements": "Python, SQL", "url": None,
+        }]}
+        problems = import_jobs_module.verify_with_the_real_loader(payload)
+        assert any("job-1.requirements" in problem for problem in problems), problems
+
+    def test_the_tripwire_notices_a_posting_the_loader_drops(self, import_jobs_module):
+        # Two rows sharing an id. `load_jobs` drops the second since S6.3c, so
+        # this fires on the count; before that fix it fired on `jobs_by_id`.
+        # Either way the importer refuses to write a corpus it cannot get back.
+        posting = {
+            "id": "job-1", "title": "Backend Developer", "company": "X",
+            "location": "Chennai", "category": "Backend Developer",
+            "employment_type": "Full-time", "experience_years": 0.0,
+            "description": "d", "requirements": [], "url": None,
+        }
+        problems = import_jobs_module.verify_with_the_real_loader(
+            {"jobs": [posting, dict(posting, title="Other")]}
+        )
+        assert problems and "1 of 2" in problems[0], problems
+
+    def test_the_tripwire_leaves_the_loader_pointed_at_the_real_corpus(
+        self, import_jobs_module
+    ):
+        """It swaps a module global, so it has to swap it back.
+
+        The suite calls `main()` in process. A temp corpus still cached here
+        would go on answering for `data/jobs.json` in every test that followed.
+        """
+        from app.core import jobs_data
+
+        before = jobs_data.JOBS_FILE
+        import_jobs_module.verify_with_the_real_loader({"jobs": []})
+        assert jobs_data.JOBS_FILE == before
+        assert len(jobs_data.load_jobs()) > 1
+
+    # --- AC: rejected rows are reported, not dropped ----------------------
+
+    def test_every_rejection_is_counted_named_and_located(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        source = self._csv(tmp_path / "postings.csv", [
+            self._row(),
+            self._row(title="Software Engineer"),
+            self._row(title="Cloud Engineer / Data Scientist"),
+            self._row(title="Data Analyst", description="See website."),
+            self._row(title="DevOps Engineer", formatted_experience_level="TBD"),
+            self._row(title="   "),
+            self._row(title="QA Engineer", job_id="dup"),
+            self._row(title="Mobile Developer", job_id="dup"),
+        ])
+        assert import_jobs_module.main(
+            [str(source), "--out", str(tmp_path / "jobs.json")]
+        ) == 0
+        output = capsys.readouterr().out
+
+        assert "Read 8 row(s), accepted 2." in output
+        assert "Rejected 6 row(s):" in output
+        for reason in import_jobs_module.REASONS.values():
+            assert reason in output, f"{reason!r} was not reported\n{output}"
+        # A count on its own is a number the reader has to take on trust. The
+        # line number is what lets them go and look at the row.
+        assert re.search(r"line \d+  'Software Engineer'", output), output
+
+    def test_the_reported_line_is_the_line_in_the_file(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        """Row 2 is not line 3 when row 1 has a newline in its description.
+
+        Counting rows and calling them lines is the kind of off-by-anything
+        that only shows up on real data, where descriptions are full of them.
+        """
+        source = self._csv(tmp_path / "postings.csv", [
+            self._row(description=self.DESCRIPTION + "\n\nSecond paragraph here."),
+            self._row(title="Software Engineer"),
+        ])
+        import_jobs_module.main([str(source), "--out", str(tmp_path / "jobs.json")])
+        output = capsys.readouterr().out
+
+        text = source.read_text(encoding="utf-8")
+        expected = 1 + text[: text.index("Software Engineer")].count("\n")
+        assert f"line {expected}  'Software Engineer'" in output, output
+
+    def test_rejected_rows_can_be_written_out_in_full(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        source = self._csv(tmp_path / "postings.csv", [
+            self._row(),
+            self._row(title="Software Engineer"),
+            self._row(title="Product Manager"),
+        ])
+        rejects = tmp_path / "rejects.csv"
+        import_jobs_module.main([str(source), "--out", str(tmp_path / "jobs.json"),
+                                 "--rejects", str(rejects)])
+        capsys.readouterr()
+
+        rows = list(csv.DictReader(rejects.open(encoding="utf-8")))
+        assert [row["title"] for row in rows] == ["Software Engineer", "Product Manager"]
+        # The original columns survive, so the file can be fixed and re-fed
+        # rather than re-derived from a printed summary.
+        assert all(row["description"] == self.DESCRIPTION for row in rows)
+        assert all("role family" in row["reject_reason"] for row in rows)
+
+    # --- the category is never invented ------------------------------------
+
+    def test_a_title_with_no_role_family_is_rejected_not_bucketed(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        """`load_jobs` would default it to "General". That is the whole point.
+
+        One "General" posting is a curiosity. Four thousand of them is a role
+        family built out of everything the importer failed to understand, and
+        the classifier trains on the result.
+        """
+        source = self._csv(tmp_path / "postings.csv", [
+            self._row(), self._row(title="Software Engineer"),
+        ])
+        out = tmp_path / "jobs.json"
+        import_jobs_module.main([str(source), "--out", str(out)])
+        capsys.readouterr()
+
+        assert [job.category for job in self._corpus(out)] == ["Backend Developer"]
+        assert "General" not in out.read_text(encoding="utf-8")
+
+    def test_a_new_family_needs_a_column_where_a_human_decided(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        rows = [self._row(title="Software Engineer"), self._row(title="Platform Owner")]
+        source = self._csv(tmp_path / "postings.csv",
+                           [dict(row, job_family="Product Engineer") for row in rows])
+        out = tmp_path / "jobs.json"
+
+        assert import_jobs_module.main([str(source), "--out", str(out)]) == 0
+        assert {job.category for job in self._corpus(out)} == {"Product Engineer"}
+        assert "1 new role family(ies): Product Engineer (2)" in capsys.readouterr().out
+
+    def test_a_family_that_differs_only_in_case_joins_the_existing_one(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        source = self._csv(tmp_path / "postings.csv", [
+            dict(self._row(), job_family="backend developer"),
+            dict(self._row(title="Frontend Developer"), job_family="BACKEND DEVELOPER"),
+        ])
+        out = tmp_path / "jobs.json"
+        assert import_jobs_module.main([str(source), "--out", str(out)]) == 0
+        capsys.readouterr()
+        # One family, spelled the way the corpus already spells it - not three
+        # role profiles for one role.
+        assert {job.category for job in self._corpus(out)} == {"Backend Developer"}
+
+    def test_the_more_specific_family_wins_and_a_real_tie_is_refused(
+        self, import_jobs_module
+    ):
+        """Longest match first, because titles nest.
+
+        "Full Stack Developer (Backend)" contains both families and means the
+        first one. When the two matches are the same length there is nothing
+        to prefer, and guessing there would be a coin toss that ends up as a
+        training label.
+        """
+        known = {"Backend Developer", "Full Stack Developer",
+                 "Cloud Engineer", "Data Scientist"}
+        assert import_jobs_module.derive_category(
+            "Full Stack Developer (Backend)", known
+        ) == ("Full Stack Developer", "matched")
+        assert import_jobs_module.derive_category(
+            "Cloud Engineer / Data Scientist", known
+        ) == (None, "ambiguous")
+        assert import_jobs_module.derive_category("Software Engineer", known) == (
+            None, "unknown"
+        )
+
+    def test_a_family_name_must_match_on_word_boundaries(self, import_jobs_module):
+        """"Data Analyst" is inside "Metadata Analyst", and means something else.
+
+        A substring match here does not produce a wrong search result that
+        somebody notices - it produces a training label, and the classifier
+        learns the mislabelled posting as if a human had chosen it.
+        """
+        known = {"Data Analyst"}
+        assert import_jobs_module.derive_category("Metadata Analyst", known) == (
+            None, "unknown"
+        )
+        # And the boundary must not cost the ordinary case, which is a family
+        # name with words in front of it.
+        assert import_jobs_module.derive_category("Senior Data Analyst", known) == (
+            "Data Analyst", "matched"
+        )
+
+    # --- experience is the field the recommender filters on ----------------
+
+    def test_an_unreadable_experience_is_rejected_not_read_as_zero(
+        self, import_jobs_module
+    ):
+        """0 means "open to a fresher", and the recommender filters on it.
+
+        Defaulting an unreadable cell to 0 does not lose a posting quietly - it
+        puts senior work in a student's list.
+        """
+        assert import_jobs_module.parse_experience("TBD") == (None, "unparseable")
+        assert import_jobs_module.parse_experience("2024") == (None, "unparseable")
+        assert import_jobs_module.parse_experience("") == (0.0, "missing")
+        assert import_jobs_module.parse_experience("3-5 years") == (3.0, "number")
+        assert import_jobs_module.parse_experience("Mid-Senior level") == (3.0, "level")
+        # Longest phrase first, or "mid senior level" is read as "senior".
+        assert import_jobs_module.parse_experience("Senior") == (5.0, "level")
+
+    def test_the_report_says_how_much_of_the_filter_is_convention(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        source = self._csv(tmp_path / "postings.csv", [
+            self._row(formatted_experience_level="2 years"),
+            self._row(title="Frontend Developer", formatted_experience_level="Senior"),
+            self._row(title="Data Analyst", formatted_experience_level=""),
+        ])
+        import_jobs_module.main([str(source), "--out", str(tmp_path / "jobs.json")])
+        output = capsys.readouterr().out
+        assert "1 read as a number" in output
+        assert "1 from the seniority" in output
+        assert "1 absent and therefore 0" in output
+
+    # --- refusing to make things worse -------------------------------------
+
+    def test_it_refuses_to_drop_role_families_the_corpus_has_today(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        """The same guard `train_classifier.py` has, on the other file.
+
+        A four-role import over a thirteen-role corpus takes nine roles out of
+        the classifier, the filters and the role list, and the run that does it
+        looks like a success.
+        """
+        from app.core import jobs_data
+
+        out = tmp_path / "jobs.json"
+        out.write_text(jobs_data.JOBS_FILE.read_text(encoding="utf-8"), encoding="utf-8")
+        source = self._csv(tmp_path / "postings.csv", [self._row()])
+
+        assert import_jobs_module.main([str(source), "--out", str(out)]) == 1
+        output = capsys.readouterr().out
+        assert "Refusing to write" in output
+        assert "role family(ies) the corpus has today" in output
+        assert len(self._corpus(out)) == 26, "the corpus was replaced anyway"
+
+        assert import_jobs_module.main([str(source), "--out", str(out), "--force"]) == 0
+        capsys.readouterr()
+        assert len(self._corpus(out)) == 1
+
+    def test_a_dry_run_reports_the_refusal_instead_of_hiding_it(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        from app.core import jobs_data
+
+        out = tmp_path / "jobs.json"
+        out.write_text(jobs_data.JOBS_FILE.read_text(encoding="utf-8"), encoding="utf-8")
+        source = self._csv(tmp_path / "postings.csv", [self._row()])
+
+        # A dry run that reports a clean import and then fails for real is a
+        # dry run nobody trusts twice.
+        assert import_jobs_module.main([str(source), "--out", str(out), "--dry-run"]) == 1
+        assert "Would refuse to write" in capsys.readouterr().out
+
+    def test_a_dry_run_writes_nothing(self, import_jobs_module, tmp_path, capsys):
+        source = self._csv(tmp_path / "postings.csv", [self._row()])
+        out = tmp_path / "jobs.json"
+        assert import_jobs_module.main([str(source), "--out", str(out), "--dry-run"]) == 0
+        assert "--dry-run: nothing written" in capsys.readouterr().out
+        assert not out.exists()
+
+    def test_it_will_not_overwrite_an_existing_corpus_by_accident(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        source = self._csv(tmp_path / "postings.csv", [self._row()])
+        out = tmp_path / "jobs.json"
+        assert import_jobs_module.main([str(source), "--out", str(out)]) == 0
+        capsys.readouterr()
+
+        assert import_jobs_module.main([str(source), "--out", str(out)]) == 1
+        assert "Pass --append to add to it, or --force to replace it" in \
+            capsys.readouterr().out
+
+    def test_append_keeps_the_old_postings_and_reuses_none_of_their_ids(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        from app.core import jobs_data
+
+        out = tmp_path / "jobs.json"
+        out.write_text(jobs_data.JOBS_FILE.read_text(encoding="utf-8"), encoding="utf-8")
+        before = self._corpus(out)
+
+        source = self._csv(tmp_path / "postings.csv", [
+            self._row(title="Cloud Engineer"), self._row(title="QA Engineer"),
+        ])
+        assert import_jobs_module.main([str(source), "--out", str(out), "--append"]) == 0
+        capsys.readouterr()
+
+        after = self._corpus(out)
+        assert len(after) == len(before) + 2
+        assert [job.id for job in after[: len(before)]] == [job.id for job in before]
+        # Generated ids continue past the corpus instead of starting at 1 and
+        # colliding with it - which `load_jobs` would then silently drop.
+        assert len({job.id for job in after}) == len(after)
+        assert after[-1].id == "job-00028"
+
+    def test_the_notes_the_corpus_carries_survive_an_import(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        """`notes` is advice from whoever curated the corpus to whoever grows it.
+
+        Deleting it at the moment somebody is taking it is the worst possible
+        time to delete it.
+        """
+        from app.core import jobs_data
+
+        out = tmp_path / "jobs.json"
+        out.write_text(jobs_data.JOBS_FILE.read_text(encoding="utf-8"), encoding="utf-8")
+        original = json.loads(out.read_text(encoding="utf-8"))["notes"]
+
+        source = self._csv(tmp_path / "postings.csv", [self._row()])
+        import_jobs_module.main([str(source), "--out", str(out), "--force"])
+        capsys.readouterr()
+
+        written = json.loads(out.read_text(encoding="utf-8"))
+        assert written["notes"] == original
+        assert "import_jobs.py" in written["source"]
+
+    # --- unusable input explains itself ------------------------------------
+
+    def test_a_csv_without_the_two_required_columns_says_which_and_how(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        source = self._csv(tmp_path / "postings.csv",
+                           [{"role_name": "Backend Developer",
+                             "description": self.DESCRIPTION}])
+        assert import_jobs_module.main(
+            [str(source), "--out", str(tmp_path / "jobs.json")]
+        ) == 1
+        output = capsys.readouterr().out
+        # Names the one that is missing, lists what the file actually has, and
+        # gives the flag - because "invalid CSV" sends a reader nowhere.
+        assert "no column for: title." in output
+        assert "Columns found: role_name, description" in output
+        assert "--column title=<your column>" in output
+
+    def test_a_csv_where_everything_is_rejected_says_so_rather_than_writing_nothing(
+        self, import_jobs_module, tmp_path, capsys
+    ):
+        source = self._csv(tmp_path / "postings.csv",
+                           [self._row(title="Software Engineer")])
+        out = tmp_path / "jobs.json"
+        assert import_jobs_module.main([str(source), "--out", str(out)]) == 1
+        assert "that reason is the mapping" in capsys.readouterr().out
+        assert not out.exists()
+
+
+class TestJobCorpusLoader:
+    """S6.3a-c. What `load_jobs` does with a row it cannot use.
+
+    Its own comment has always promised to skip malformed rows rather than
+    fail the corpus, "because a 20,000-row import will always contain a few bad
+    records". S6.3 is that import, and writing it meant finding out that the
+    promise held for one of the four ways a row can be wrong.
+    """
+
+    @staticmethod
+    def _load(tmp_path, rows):
+        from app.core import jobs_data
+
+        path = tmp_path / "jobs.json"
+        path.write_text(json.dumps({"jobs": rows}), encoding="utf-8")
+        with _corpus_at(jobs_data, path):
+            return list(jobs_data.load_jobs()), dict(jobs_data.jobs_by_id())
+
+    @staticmethod
+    def _posting(**overrides) -> dict:
+        row = {
+            "id": "job-1", "title": "Backend Developer", "company": "Northwind",
+            "location": "Chennai", "category": "Backend Developer",
+            "employment_type": "Full-time", "experience_years": 0,
+            "description": "Own the payments service.", "requirements": [],
+        }
+        row.update(overrides)
+        return row
+
+    def test_a_string_requirement_is_one_requirement_not_eleven_letters(
+        self, tmp_path
+    ):
+        """S6.3a. `list("Python, SQL")` is eleven single characters.
+
+        Nothing raised and nothing was logged. Each character then became its
+        own line of `searchable_text`, which is the text BM25 indexes, so the
+        posting was matched on an alphabet.
+        """
+        jobs, _ = self._load(tmp_path, [self._posting(requirements="Python, SQL")])
+        assert jobs[0].requirements == ["Python, SQL"]
+        assert "\nP\ny\nt" not in jobs[0].searchable_text
+
+    def test_one_unreadable_row_does_not_take_the_corpus_with_it(self, tmp_path):
+        """S6.3b. `float("3+ years")` raised straight out of the loader.
+
+        Only KeyError was caught, so one bad cell in one row lost all 26
+        postings - and `lru_cache` does not cache an exception, so every
+        request after it paid for the same failure again.
+        """
+        jobs, _ = self._load(tmp_path, [
+            self._posting(id="a"),
+            self._posting(id="b", experience_years="3+ years"),
+            self._posting(id="c"),
+        ])
+        assert [job.id for job in jobs] == ["a", "c"]
+
+    def test_a_row_that_is_not_a_posting_at_all_is_skipped(self, tmp_path):
+        jobs, _ = self._load(tmp_path, [self._posting(id="a"), "not a posting",
+                                        self._posting(id="c", requirements=7)])
+        assert [job.id for job in jobs] == ["a", "c"]
+        assert jobs[1].requirements == []
+
+    def test_a_repeated_id_is_dropped_so_every_posting_can_be_opened(self, tmp_path):
+        """S6.3c. Two postings, one id: both loaded, one could be opened.
+
+        The recommender returns ids and the detail endpoint looks them up in
+        `jobs_by_id()`, which is a dict - so the student clicked one card and
+        got the other posting.
+        """
+        jobs, by_id = self._load(tmp_path, [
+            self._posting(id="job-1", title="First"),
+            self._posting(id="job-1", title="Second"),
+        ])
+        assert [job.title for job in jobs] == ["First"]
+        assert len(by_id) == len(jobs)
+
+    def test_every_posting_in_the_shipped_corpus_can_be_opened(self):
+        """The invariant, on the file that actually ships.
+
+        `len(load_jobs()) == len(jobs_by_id())` is what makes a job id in a
+        recommendation a promise that the posting exists.
+        """
+        from app.core import jobs_data
+
+        jobs = jobs_data.load_jobs()
+        assert len(jobs_data.jobs_by_id()) == len(jobs)
+        assert all(jobs_data.get_job(job.id) is job for job in jobs)
 
 
 class TestEmbed:

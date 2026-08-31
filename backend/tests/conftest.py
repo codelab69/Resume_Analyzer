@@ -93,6 +93,29 @@ def train_classifier_module():
 
 
 @pytest.fixture(scope="session")
+def import_jobs_module():
+    """`scripts/import_jobs.py`, imported as a module.
+
+    No `importorskip` here, unlike `train_classifier_module` above: the
+    importer is stdlib and `app.core.jobs_data` only, so it has to work in the
+    degraded environment. Growing the corpus is not an ML extra.
+    """
+    import importlib.util
+
+    path = BACKEND_ROOT / "scripts" / "import_jobs.py"
+    spec = importlib.util.spec_from_file_location("import_jobs", path)
+    module = importlib.util.module_from_spec(spec)
+    # Registered before `exec_module`, unlike `train_classifier_module` above,
+    # because this script defines a dataclass under `from __future__ import
+    # annotations`. `@dataclass` resolves its string annotations by looking its
+    # own module up in `sys.modules`, and a module that is not in there yet
+    # fails with an AttributeError on None at import time.
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(scope="session")
 def sample_resume_text() -> str:
     """A complete, well-formed resume. The happy path for every stage."""
     return (FIXTURES / "sample_resume.txt").read_text(encoding="utf-8")
