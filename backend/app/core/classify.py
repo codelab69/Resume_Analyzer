@@ -93,7 +93,8 @@ TRAINED_CONFIDENT_MARGIN = 0.20
 # With 26 postings this cap is inactive for 11 of the 13 roles - their whole
 # profile is shorter than 25 - so the ranking barely moves the numbers today.
 # It moves them as the corpus grows, which is what `scripts/import_jobs.py`
-# will be for - that importer is not yet written.
+# is for. That importer exists since S6.3; it has not been pointed at a real
+# dataset, so the corpus is still the 26 hand-written postings.
 ROLE_KEYWORD_COUNT = 25
 
 # A prediction below this confidence is not a prediction. The profile

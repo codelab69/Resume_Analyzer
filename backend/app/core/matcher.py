@@ -13,11 +13,14 @@ different direction, which is exactly why the combination is defensible:
     S_lex    keyword        mirrors what real ATS software does, misses synonyms
     S_fit    eligibility    catches hard gates, says nothing about ability
 
-The weights live in app/config.py and are validated to sum to 1.0. They are a
-starting point, not a result. Tuning them means hand-labelled pairs and a
-reported correlation before and after; scripts/tune_weights.py will do that
-and is not yet written, so today's weights are an informed guess and this
-docstring is the only thing saying so.
+The weights live in app/config.py and are validated to sum to 1.0. They are
+still a starting point, not a result, and it is worth being precise about why.
+scripts/tune_weights.py exists since S6.4: it sweeps every combination over a
+labelled set and reports what ranks best, without writing anything. What does
+not exist is the labelled set - the judgements, made by a person, about which
+resume genuinely fits which posting. The tool is written; nobody has answered
+the question it asks. So today's weights are an informed guess, and this
+docstring is still one of the few things saying so.
 
 Every sub-score is returned alongside the total. Showing one number hides the
 only actionable information: "81 on semantic fit, 34 on skill overlap" tells

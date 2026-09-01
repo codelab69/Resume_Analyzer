@@ -255,8 +255,14 @@ test immediately failed on a **new** unmarked reference the new script had intro
 own docstring pointing at `scripts/import_jobs.py` as the way to get a corpus worth quoting
 an accuracy from.
 
-S6.3 closed that one. Two of the three markers are now instructions that work; the last is
-`tune_weights.py` in `matcher.py` and `.env.example`, which is S6.4.
+S6.3 closed that one, and S6.4 closed the last: `tune_weights.py` now exists, so the markers
+in `matcher.py` and `.env.example` came out. All four scripts `app/` names are on disk and
+`TestScriptPathsInTheCode` has no marker left to excuse.
+
+Both replacements are worth reading, because neither is "the problem is solved". The tuner
+exists and the weights are still a guess — for a different and more precise reason, which is
+that nobody has made the judgements it needs. Turning "not yet written" into "written, and
+here is what is still missing" is the honest form of closing one of these.
 
 ---
 
@@ -378,7 +384,9 @@ It was moved to the one place it can fail.*
   every role**, which the margin check correctly reports as no answer — but half the ontology
   gives **Cloud Engineer at 0.857, reported as confident**. A precision term would fix it and
   would also penalise genuinely broad candidates; choosing between those needs labelled pairs,
-  which is `scripts/tune_weights.py`, which is not yet written.
+  which is `scripts/tune_weights.py`. That script exists since S6.4; the labelled pairs
+  it needs still do not, and it will not invent them — see
+  [[Job Matching#What the tuner says today, and why it is not adopted]].
 - **One margin, two score scales.** `CONFIDENT_MARGIN` is an absolute 0.08. Profile scores are
   weighted recall; trained scores are a softmax over class margins. The same number means
   something different in each. S6.2 gave the trained backend its own pair of thresholds,

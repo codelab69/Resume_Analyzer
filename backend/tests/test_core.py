@@ -13,6 +13,7 @@ import ast
 import contextlib
 import csv
 import json
+import os
 import pathlib
 import re
 import sys
@@ -1352,6 +1353,31 @@ class TestScriptPathsInTheCode:
                     line = 1 + text[: match.start()].count("\n")
                     unmarked.append(f"{source.name}:{line} {match.group(0)}")
         assert not unmarked, unmarked
+
+    def test_no_script_that_exists_is_still_described_as_missing(self):
+        """S6.4a. The other half of the rule, which nothing was checking.
+
+        The test above enforces "a missing script must say so". Nothing
+        enforced the reverse, so a marker outlived the absence it described:
+        `classify.py` still said `scripts/import_jobs.py` "is not yet written"
+        after S6.3 wrote it. The scan skipped the line the moment the file
+        appeared on disk, which is precisely when the sentence became false.
+
+        Same file set as the scan above, and deliberately not the vault: two
+        notes discuss the marker itself as a rule, and a check that cannot
+        tell a rule from an instance would fail on its own documentation.
+        """
+        stale = []
+        for source in self._files_that_name_scripts():
+            text = source.read_text(encoding="utf-8")
+            for match in re.finditer(r"scripts/(\w+)\.py", text):
+                if not (self.SCRIPTS / f"{match.group(1)}.py").exists():
+                    continue
+                window = text[match.start() : match.end() + 200]
+                if "not yet written" in window:
+                    line = 1 + text[: match.start()].count("\n")
+                    stale.append(f"{source.name}:{line} {match.group(0)} exists")
+        assert not stale, stale
 
     def test_the_scripts_that_do_exist_are_the_ones_the_guides_promise(self):
         # The other direction: a script on disk that no document mentions is
@@ -3039,3 +3065,306 @@ class TestWarmup:
             f"{analysis.timings}. Something lazy is being initialised inside "
             f"the request instead of in warmup()."
         )
+
+
+# ---------------------------------------------------------------------------
+# scripts/tune_weights.py
+# ---------------------------------------------------------------------------
+
+
+def _query(module, name, *rows):
+    """Build a Query from (relevant?, semantic, skill, lexical, fit) rows."""
+    return module.Query(
+        name=name,
+        candidates=[
+            module.Candidate(name=f"c{i}", relevant=relevant, sub_scores=tuple(scores))
+            for i, (relevant, *scores) in enumerate(rows)
+        ],
+    )
+
+
+class TestTuneWeights:
+    """S6.4. The sweep that finally gives the four weights an argument.
+
+    Everything here runs on synthetic sub-scores rather than on real pairs,
+    because what is being tested is the arithmetic that turns judgements into
+    a ranking metric - and a test that has to score 650 real pairs first is a
+    test nobody runs. The one place a real pair matters is the corpus builder,
+    which gets four postings and is checked for the rule it claims: two
+    postings are relevant to each other when they share a category.
+    """
+
+    # --- the grid ---------------------------------------------------------
+
+    def test_every_combination_sums_to_exactly_one(self, tune_weights_module):
+        """Exactly, not nearly.
+
+        `app/config.py` rejects a weight set that misses 1.0 by more than
+        1e-6, and this script's whole output is four numbers a person pastes
+        into `.env`. A float accumulator produces 0.9999999999999999 for a
+        step of 0.05, which would make the tuner print a configuration the app
+        refuses to start on.
+        """
+        for weights in tune_weights_module.grid(0.05):
+            assert sum(weights) == 1.0, weights
+
+    def test_the_grid_is_the_whole_simplex(self, tune_weights_module):
+        # Four non-negative weights on a step of 0.25 summing to 1.0: the
+        # number of ways to put 4 units into 4 buckets, C(7,3) = 35.
+        combinations = tune_weights_module.grid(0.25)
+        assert len(combinations) == 35
+        assert len(set(combinations)) == 35
+        assert (1.0, 0.0, 0.0, 0.0) in combinations
+        assert (0.25, 0.25, 0.25, 0.25) in combinations
+
+    def test_a_step_that_does_not_divide_one_is_refused(self, tune_weights_module):
+        with pytest.raises(ValueError):
+            tune_weights_module.grid(0.3)
+
+    # --- the metric -------------------------------------------------------
+
+    def test_a_perfect_ranking_scores_one_and_an_inverted_one_zero(self, tune_weights_module):
+        only_semantic = (1.0, 0.0, 0.0, 0.0)
+        good = _query(tune_weights_module, "good",
+                      (True, 0.9, 0, 0, 0), (False, 0.1, 0, 0, 0))
+        bad = _query(tune_weights_module, "bad",
+                     (True, 0.1, 0, 0, 0), (False, 0.9, 0, 0, 0))
+
+        assert tune_weights_module.pairwise_accuracy(good, only_semantic) == 1.0
+        assert tune_weights_module.pairwise_accuracy(bad, only_semantic) == 0.0
+
+    def test_a_tie_is_half_a_point_not_a_win(self, tune_weights_module):
+        """The difference between "separates nothing" and "perfect".
+
+        Whole blocks of candidates tie: a sub-score is exactly 0.0 on both
+        sides more often than not, and a coarse grid produces identical totals
+        from different weights. Scoring a tie as a win would report a scorer
+        that has not ordered anything as 1.000.
+        """
+        flat = _query(tune_weights_module, "flat",
+                      (True, 0.5, 0, 0, 0), (False, 0.5, 0, 0, 0))
+        assert tune_weights_module.pairwise_accuracy(flat, (1.0, 0.0, 0.0, 0.0)) == 0.5
+
+    def test_a_signal_that_does_not_vary_cannot_change_the_ranking(self, tune_weights_module):
+        """The identifiability point, asserted rather than left in prose.
+
+        `fit` is the same on every candidate here, so it adds the same
+        constant to every total. Moving weight onto it cannot reorder
+        anything - it can only take weight away from a signal that can. This
+        is why the script prints each signal's within-query spread before it
+        prints a winner.
+        """
+        query = _query(tune_weights_module, "constant-fit",
+                       (True, 0.9, 0, 0, 0.7), (False, 0.1, 0, 0, 0.7))
+
+        for fit_weight in (0.0, 0.3, 0.9):
+            weights = (1.0 - fit_weight, 0.0, 0.0, fit_weight)
+            assert tune_weights_module.pairwise_accuracy(query, weights) == 1.0
+
+        # ...and with all the weight on the flat signal, nothing is ordered.
+        assert tune_weights_module.pairwise_accuracy(query, (0.0, 0.0, 0.0, 1.0)) == 0.5
+
+    def test_queries_are_macro_averaged_not_pooled(self, tune_weights_module):
+        # A query with many candidates must not outvote a query with few.
+        # Pooling the pairs would weight the first one 4:1 here.
+        big = _query(tune_weights_module, "big",
+                     (True, 0.9, 0, 0, 0), *[(False, 0.1, 0, 0, 0)] * 4)
+        small = _query(tune_weights_module, "small",
+                       (True, 0.1, 0, 0, 0), (False, 0.9, 0, 0, 0))
+
+        assert tune_weights_module.score_weights([big, small], (1.0, 0, 0, 0)) == 0.5
+
+    def test_a_query_with_only_one_kind_of_candidate_is_unusable(self, tune_weights_module):
+        module = tune_weights_module
+        assert not _query(module, "all-good", (True, 1, 0, 0, 0)).is_usable
+        assert not _query(module, "all-bad", (False, 1, 0, 0, 0)).is_usable
+        assert _query(module, "both", (True, 1, 0, 0, 0), (False, 0, 0, 0, 0)).is_usable
+
+    # --- the sweep --------------------------------------------------------
+
+    def test_the_sweep_finds_the_signal_that_actually_separates(self, tune_weights_module):
+        # `lexical` orders both queries correctly; the other three are noise.
+        # The winner must put its weight there.
+        queries = [
+            _query(tune_weights_module, "a",
+                   (True, 0.2, 0.8, 0.9, 0.5), (False, 0.9, 0.2, 0.1, 0.5)),
+            _query(tune_weights_module, "b",
+                   (True, 0.1, 0.3, 0.8, 0.2), (False, 0.8, 0.9, 0.2, 0.9)),
+        ]
+        best = max(
+            tune_weights_module.grid(0.1),
+            key=lambda weights: tune_weights_module.score_weights(queries, weights),
+        )
+        lexical = tune_weights_module.SIGNALS.index("lexical")
+        assert best[lexical] > 0.5, best
+
+    def test_diagnostics_name_a_signal_that_is_constant_within_a_query(
+        self, tune_weights_module
+    ):
+        query = _query(tune_weights_module, "q",
+                       (True, 0.9, 0, 0, 0.7), (False, 0.1, 0, 0, 0.7))
+        diagnostics = tune_weights_module.signal_diagnostics([query])
+
+        assert diagnostics["fit"][1] == 0.0, "a flat signal must report zero spread"
+        assert diagnostics["semantic"][1] > 0.0
+        assert diagnostics["semantic"][0] == 1.0
+
+    def test_the_bootstrap_is_paired_and_repeatable(self, tune_weights_module):
+        # Same input, same answer: a stability number that moves between runs
+        # is one nobody can quote.
+        queries = [
+            _query(tune_weights_module, "a",
+                   (True, 0.2, 0, 0.9, 0), (False, 0.9, 0, 0.1, 0)),
+            _query(tune_weights_module, "b",
+                   (True, 0.1, 0, 0.8, 0), (False, 0.8, 0, 0.2, 0)),
+        ]
+        lexical = (0.0, 0.0, 1.0, 0.0)
+        semantic = (1.0, 0.0, 0.0, 0.0)
+        first = tune_weights_module.bootstrap_wins(queries, lexical, semantic)
+        assert first == tune_weights_module.bootstrap_wins(queries, lexical, semantic)
+        assert first == 1.0, "lexical orders every query correctly and must always win"
+
+    # --- the corpus builder ----------------------------------------------
+
+    def test_corpus_relevance_is_a_shared_category(self, tune_weights_module, monkeypatch):
+        from app.core import jobs_data
+
+        def four_postings():
+            return [
+                jobs_data.Job(
+                    id=f"job-{i}", title=title, company="X", location="Remote",
+                    category=category, employment_type="Full-time",
+                    experience_years=1.0, description=description, requirements=[],
+                )
+                for i, (title, category, description) in enumerate([
+                    ("Backend Developer", "Backend Developer", "Python and FastAPI APIs."),
+                    ("API Engineer", "Backend Developer", "REST services in Python."),
+                    ("Data Analyst", "Data Analyst", "SQL dashboards and reporting."),
+                    ("BI Analyst", "Data Analyst", "Power BI and SQL reporting."),
+                ])
+            ]
+
+        monkeypatch.setattr(jobs_data, "load_jobs", four_postings)
+        queries = tune_weights_module.queries_from_corpus()
+
+        assert len(queries) == 4
+        for query in queries:
+            assert len(query.candidates) == 3, "a posting must not be its own candidate"
+            # One other posting shares its category; two do not.
+            assert len(query.relevant) == 1
+            assert len(query.irrelevant) == 2
+            assert query.is_usable
+
+    # --- the AC: it writes nothing ---------------------------------------
+
+    def test_it_writes_nothing_at_all(self, tune_weights_module, monkeypatch, capsys):
+        """The clause the story is named for.
+
+        A tuner that edits config changes the answer of every measurement
+        taken after it, including its own next run. So this walks the whole
+        backend tree before and after and asserts nothing moved - not `.env`,
+        not the data files, not an artifact.
+        """
+        backend = pathlib.Path(__file__).resolve().parents[1]
+        skip = {".venv", "__pycache__", ".pytest_cache", "storage"}
+
+        def snapshot():
+            # Pruned during the walk, not filtered after it. `rglob` then
+            # discarding enumerates every file in `.venv` first - fifty
+            # thousand of them, torch included - which turned a test that
+            # checks sixty files into one that takes minutes.
+            found = {}
+            for root, directories, files in os.walk(backend):
+                directories[:] = [d for d in directories if d not in skip]
+                for name in files:
+                    path = pathlib.Path(root) / name
+                    found[path] = (path.stat().st_mtime_ns, path.stat().st_size)
+            return found
+
+        queries = [
+            _query(tune_weights_module, "a",
+                   (True, 0.2, 0, 0.9, 0), (False, 0.9, 0, 0.1, 0)),
+            _query(tune_weights_module, "b",
+                   (True, 0.1, 0, 0.8, 0), (False, 0.8, 0, 0.2, 0)),
+        ]
+        monkeypatch.setattr(tune_weights_module, "queries_from_corpus", lambda: queries)
+        monkeypatch.setattr(sys, "argv", ["tune_weights.py", "--from-corpus", "--step", "0.25"])
+
+        before = snapshot()
+        assert tune_weights_module.main() == 0
+        assert snapshot() == before, "the tuner touched a file"
+
+        printed = capsys.readouterr().out
+        assert "Nothing was written" in printed
+        assert "WEIGHT_SEMANTIC=" in printed, "it must still say what to paste"
+
+    def test_with_no_source_it_refuses_rather_than_choosing_one(
+        self, tune_weights_module, monkeypatch, capsys
+    ):
+        # The import_jobs lesson: a measuring tool must not pick your evidence
+        # for you. Both sources have to be named in the refusal, or the
+        # refusal is just an error.
+        monkeypatch.setattr(sys, "argv", ["tune_weights.py"])
+        assert tune_weights_module.main() == 2
+
+        message = capsys.readouterr().err
+        assert "--labels" in message and "--from-corpus" in message
+
+    def test_a_tie_at_the_top_is_reported_as_a_tie(self, tune_weights_module,
+                                                   monkeypatch, capsys):
+        """Reporting one winner out of many is a coin toss dressed as a result.
+
+        Every candidate here is ordered correctly by both `semantic` and
+        `lexical`, so every combination using only those two scores 1.000 and
+        the top of the grid is a large tie.
+        """
+        queries = [
+            _query(tune_weights_module, "a",
+                   (True, 0.9, 0, 0.9, 0), (False, 0.1, 0, 0.1, 0)),
+        ]
+        monkeypatch.setattr(tune_weights_module, "queries_from_corpus", lambda: queries)
+        monkeypatch.setattr(sys, "argv", ["tune_weights.py", "--from-corpus", "--step", "0.25"])
+
+        assert tune_weights_module.main() == 0
+        printed = capsys.readouterr().out
+        assert "combinations tie at" in printed
+        assert "coin toss" in printed
+
+    # --- labels ----------------------------------------------------------
+
+    def test_unknown_job_ids_in_a_label_file_are_refused(self, tune_weights_module, tmp_path):
+        labels = tmp_path / "labels.json"
+        labels.write_text(json.dumps({"queries": [
+            {"resume": "r.txt", "relevant": ["job-1"], "irrelevant": ["job-nope"]}
+        ]}), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="not in the corpus"):
+            tune_weights_module.load_labels(labels, closed_world=False)
+
+    def test_an_unjudged_posting_is_not_a_negative_unless_asked(
+        self, tune_weights_module, tmp_path
+    ):
+        """Absence of a label is not a label.
+
+        Reading "nobody judged this" as "not relevant" manufactures
+        twenty-four negatives per query on a 26-posting corpus, and every
+        number downstream would be built on them. The assumption is available
+        and it has to be asked for.
+        """
+        from app.core import jobs_data
+
+        real_id = jobs_data.load_jobs()[0].id
+        labels = tmp_path / "labels.json"
+        labels.write_text(json.dumps({"queries": [
+            {"resume": "r.txt", "relevant": [real_id]}
+        ]}), encoding="utf-8")
+
+        (_, _, relevant, irrelevant), = tune_weights_module.load_labels(
+            labels, closed_world=False)
+        assert relevant == [real_id]
+        assert irrelevant == []
+
+        (_, _, relevant, irrelevant), = tune_weights_module.load_labels(
+            labels, closed_world=True)
+        assert relevant == [real_id]
+        assert len(irrelevant) == len(jobs_data.load_jobs()) - 1

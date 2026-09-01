@@ -50,7 +50,7 @@ same bar every time.
 | [[#Sprint 3 — Architecture notes]] | The "how it fits together" half of the vault | Complete |
 | [[#Sprint 4 — Algorithm notes]] | Every algorithm written up for the viva | **Complete** — 9 notes, 13 defects, 2026-08-29 |
 | [[#Sprint 5 — Guides and reference]] | A stranger can set it up unaided | In progress — S5.4 and S5.5 done, 2 defects; S5.6b left |
-| [[#Sprint 6 — Maintenance tooling]] | The data files can be grown safely | In progress — S6.1, S6.2 and S6.3 done |
+| [[#Sprint 6 — Maintenance tooling]] | The data files can be grown safely | **Complete** — 4 stories, 8 defects, 2026-09-01 |
 | [[#Sprint 7 — Release hardening]] | Demo-day proof | Not started |
 
 ---
@@ -62,14 +62,14 @@ that say otherwise in their own right-hand column:
 
 | Check | Result | Measured |
 |---|---|---|
-| `pytest` | **382 passed** in 6.6 s (120 at the start of Sprint 1, 322 before S6.2, 343 before S6.3, 374 before S5.4, 379 before S5.5). Green on four consecutive runs, including after clearing every `__pycache__` and `.pytest_cache` — but **not** on the first run of the session, which gave `363 passed, 11 errors` and has not been reproduced since. See the note under S5.4 | 2026-09-01 |
-| `scripts/smoke_test.py` | passed, TOTAL **5.3 ms** warm on the transformer backend (extract 0.1, segment 0.5, entities 2.8, skills 0.5, classify 1.0, ats 0.5). Not comparable with the 201 ms recorded on 2026-08-29: that run was cold, and after S6.2c the script warms up before it times anything, because a cold `classify` stage was printing 2062.6 ms of scikit-learn import as if it were the cost of classifying | 2026-09-01 |
+| `pytest` | **400 passed** in 10.5 s (120 at the start of Sprint 1, 322 before S6.2, 343 before S6.3, 374 before S5.4, 379 before S5.5, 382 before S6.4). Green on four consecutive runs, including after clearing every `__pycache__` and `.pytest_cache` — but **not** on the first run of the session, which gave `363 passed, 11 errors` and has not been reproduced since. See the note under S5.4 | 2026-09-01 |
+| `scripts/smoke_test.py` | passed, TOTAL **11.1 ms** warm on the transformer backend (extract 0.2, segment 1.0, entities 6.2, skills 1.1, classify 1.7, ats 0.9). An earlier run the same day gave 5.3 ms with the same shape, which is worth knowing: these are timings on a shared laptop, not a benchmark, and only an order-of-magnitude change means anything. Not comparable with the 201 ms recorded on 2026-08-29: that run was cold, and after S6.2c the script warms up before it times anything, because a cold `classify` stage was printing 2062.6 ms of scikit-learn import as if it were the cost of classifying | 2026-09-01 |
 | `scripts/import_jobs.py`, round trip | the shipped 26 postings exported to CSV and imported back: **26 read, 26 accepted, 0 rejected, every field identical** through `load_jobs`. The written file spells out `"url": null`, which the hand-written corpus omits; nothing else differs | 2026-08-31, not re-run since |
-| `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed, on the transformer backend**, with a trained classifier on disk — and again, **29/29**, with the transformer forced off, because S5.4 is a note about the degraded path and running it once on the good backend would not have tested that claim | 2026-09-01 |
+| `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed on the transformer backend**, with a trained classifier on disk, **and 29/29 again with the transformer forced off**. Run both ways every time now: S5.4 is a note about the degraded path, and running it once on the good backend would not have tested that claim | 2026-09-01 |
 | `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, `role_classifier: trained, 13 labels`, notes empty | 2026-09-01 |
 | `npm run build` | clean, no warnings, 1052 modules, largest chunk `charts` 368 kB, 3.5 s | 2026-08-29, not re-run since |
 | All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 29/29 | 2026-08-27, not re-run since |
-| Vault link integrity | **456 links checked: 452 resolve, 0 point at notes still on this board, 0 broken anchors, 0 wrapped across a line.** The four that do not resolve are the literal `[[link]]` three notes use as an example of the syntax. Zero for the first time, down from 16 on 2026-08-31: [[Troubleshooting]] and [[Glossary]] now exist, and with them `Home`'s `[[Troubleshooting#The reduced accuracy banner is showing]]`, an anchor the vault had been promising for a week, which is why that note has a section under exactly that name. The wrapped-link check exists because S6.2 wrote one: a wikilink split over two lines, which Obsidian does not match — the same failure mode as the `not yet written` marker in S5.2a. The 2026-08-27 run checked 237 | 2026-09-01 |
+| Vault link integrity | **460 links checked: 456 resolve, 0 point at notes still on this board, 0 broken anchors, 0 wrapped across a line.** The four that do not resolve are the literal `[[link]]` three notes use as an example of the syntax. Zero for the first time, down from 16 on 2026-08-31: [[Troubleshooting]] and [[Glossary]] now exist, and with them `Home`'s `[[Troubleshooting#The reduced accuracy banner is showing]]`, an anchor the vault had been promising for a week, which is why that note has a section under exactly that name. The wrapped-link check exists because S6.2 wrote one: a wikilink split over two lines, which Obsidian does not match — the same failure mode as the `not yet written` marker in S5.2a. The 2026-08-27 run checked 237 | 2026-09-01 |
 
 The right-hand column exists because three of these rows — `npm run build`, the importer
 round trip and the clean-venv
@@ -84,11 +84,11 @@ e2e figure in this table used to read 30; it had never been true — see S4.4c.
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Thirty-six defects have been found by verifying rather than by looking
+> [!note] Thirty-seven defects have been found by verifying rather than by looking
 > S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a-c, S4.5a-c, S4.6a-c, S4.7a-d,
-> S4.8a-c, S4.9a, S4.9b, S5.2a, S5.3a, S5.4a, S5.4b, S6.2a-c and S6.3a-d were all found by *running* the thing being
+> S4.8a-c, S4.9a, S4.9b, S5.2a, S5.3a, S5.4a, S5.4b, S6.2a-c, S6.3a-d and S6.4a were all found by *running* the thing being
 > documented instead of trusting an existing comment or a remembered number. None of them would have
-> been caught by reading the code. Twenty-six were invisible to a green test suite, two of them
+> been caught by reading the code. Twenty-seven were invisible to a green test suite, two of them
 > on fixtures that could not have failed, and one — S4.2a — was invisible *because* the
 > code read like a correct implementation: clear docstring, named constants, a comment marking the
 > important line, all of it describing an intention rather than the behaviour. That is the
@@ -1610,9 +1610,80 @@ was rejected and why, and the worked numbers for one real example.
   there is no control for those. It is the fourth entry in the S4.3b family: prose beside
   code that nothing runs.*
 
-- [ ] **S6.4 — `scripts/tune_weights.py`**
+- [x] **S6.4 — `scripts/tune_weights.py`**
   **AC:** sweeps the four matcher weights over a labelled set and reports which
   combination ranks best, without writing anything to config automatically.
+  *Evidence 2026-09-01: all three clauses run. **1771 combinations** on a 0.05 grid, built
+  in integer units and divided at the end — a float accumulator produces sets summing to
+  0.9999999999999999, and the script's entire output is four numbers a person pastes into
+  `.env`, which `app/config.py` would then refuse. The metric is **pairwise ranking
+  accuracy**, macro-averaged over queries, ties counted as half: it ignores the absolute
+  scale of the score, which the weights change; it uses every judged pair rather than the
+  top of a list, which matters at n=23 and not n=23000; and it stays defined when a query
+  has one relevant item, which most will. **17 tests**, seven mutations, each failing the
+  test that names it — including one that makes `main()` write a file, because "writes
+  nothing" is the clause the story is named for and a snapshot of the whole backend tree
+  before and after is the only way to assert it.*
+
+  > [!important] The hard part of this story was not the sweep, it was that there is nothing to sweep against
+  > A tuner needs judgements — *this resume genuinely fits that posting* — and nobody has
+  > made any. So the script takes them from `--labels FILE` (real judgements, format
+  > documented) or `--from-corpus` (weak pairs from `jobs.json`, relevance = shared
+  > `category`), and **running it with neither is a usage error, exit 2**, naming both.
+  > That is S6.3's rule about not inventing a role label, one level up: choosing your
+  > evidence for you is the one thing a measuring tool must not do.
+  >
+  > `load_labels` makes the same refusal in miniature. A posting in neither the `relevant`
+  > nor the `irrelevant` list is *unjudged*, not negative; reading it as negative would
+  > manufacture twenty-four negatives per query on a 26-posting corpus. `--closed-world`
+  > exists and has to be asked for.
+
+  > [!warning] Its first real answer is confidently wrong, and that is the useful result
+  > On the corpus-derived labels it recommends **0.15 / 0.00 / 0.70 / 0.15** — pairwise
+  > 0.9427 against the configured 0.8972, winning **100% of 1000 bootstrap resamples**.
+  > By every number on the page, adopt it. It is giving `S_skill` a weight of **zero**,
+  > because two postings in the same family share enormous vocabulary and `lexical` alone
+  > scores 0.924 on that task. A resume and a posting do not share vocabulary that way,
+  > which is the entire reason `S_sem` exists. On the hashing backend it goes further and
+  > zeroes semantic too: **0.00 / 0.00 / 0.85 / 0.15**.
+  >
+  > A tuner recommending the deletion of three of four signals is not reporting a result
+  > about the matcher, it is reporting the shape of its evidence. Nothing was adopted; the
+  > shipped weights stay 0.40 / 0.30 / 0.20 / 0.10, and the run is written up in
+  > [[Job Matching#What the tuner says today, and why it is not adopted]] as the vault's
+  > best argument against believing a number because a script printed it.
+  >
+  > `fit` is the other half of the lesson: solo accuracy **0.492** — a coin flip — on a
+  > mean within-query spread of **0.350**. It moves a great deal and ranks nothing. The
+  > script prints spread beside solo accuracy for exactly that reason, and says out loud
+  > which signals the set cannot see before it prints a winner.
+
+  > [!note] The sweep is 4% of the run, and that was the design
+  > The four sub-scores do not depend on the weights, so every pair is scored **once** and
+  > the sweep is arithmetic over cached numbers. Measured: grid 0.00 s, diagnostics 0.01 s,
+  > sweep 1.71 s, bootstrap 1.91 s — against 575 scorings that are the rest of a 4.0 s run
+  > on the hashing backend and 54.2 s on the transformer. Re-running the matcher inside the
+  > sweep would have been 1771 × 750 analyses to answer a question that is one dot product.
+  > This is S4.9b's lesson applied before it could become S4.9b again.
+
+- [x] **S6.4a — Defect: a marker outlived the absence it described** *(unplanned)*
+  Found by grepping for `not yet written` while taking S6.4's own markers out.
+  **Cause:** `classify.py` still said `scripts/import_jobs.py` *"is not yet written"* — a
+  sentence S6.3 made false and nobody removed. `TestScriptPathsInTheCode` could not catch
+  it: it enforces *"a missing script must say so"* and skips the line entirely the moment
+  the file exists, which is exactly when the sentence stops being true. The rule was
+  written in one direction and the world moves in both.
+  **Fix:** the comment now says the importer exists and that it has not been pointed at a
+  real dataset, which is the true and still-useful half. Plus the missing direction as a
+  test: a script that **does** exist must not be described as missing within 200
+  characters of its own path.
+  **AC:** no reader is told a tool is unwritten while it is sitting on disk.
+  *Evidence 2026-09-01: **1 stale marker → 0** across the same file set the original scan
+  covers. Restoring the comment fails `test_no_script_that_exists_is_still_described_as_
+  missing` and nothing else. Deliberately not extended to the vault: two notes discuss the
+  marker as a rule rather than using it, and a check that cannot tell a rule from an
+  instance would fail on its own documentation. This is the fifth entry in the S4.3b
+  family, and the first where the prose was true when it was written.*
 
 ---
 

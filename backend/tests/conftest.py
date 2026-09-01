@@ -116,6 +116,27 @@ def import_jobs_module():
 
 
 @pytest.fixture(scope="session")
+def tune_weights_module():
+    """`scripts/tune_weights.py`, imported as a module.
+
+    No `importorskip`, for the same reason as `import_jobs_module`: the tuner
+    is stdlib and `app.core` only. Choosing the weights is not an ML extra,
+    and the degraded environment is the one where getting them right matters
+    most - it is the only signal the hashing backend has a lot of.
+    """
+    import importlib.util
+
+    path = BACKEND_ROOT / "scripts" / "tune_weights.py"
+    spec = importlib.util.spec_from_file_location("tune_weights", path)
+    module = importlib.util.module_from_spec(spec)
+    # Registered before `exec_module`, like `import_jobs_module`: this script
+    # also defines dataclasses under `from __future__ import annotations`.
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(scope="session")
 def sample_resume_text() -> str:
     """A complete, well-formed resume. The happy path for every stage."""
     return (FIXTURES / "sample_resume.txt").read_text(encoding="utf-8")

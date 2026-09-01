@@ -39,10 +39,12 @@ each one **failing in a different direction**:
 `app/config.py` validates that they sum to 1.0.
 
 > [!warning] These weights are a starting point, not a result
-> They were chosen, not measured. Tuning them properly means hand-labelled resume/JD pairs
-> and a reported correlation before and after — `scripts/tune_weights.py`, which is
-> **not yet written** ([[Sprint Board|S6.4]]). Until then this docstring and this note are the
-> only things saying so, which is exactly the situation S4.6c was about.
+> They were chosen, not measured — and they still are, for a reason worth stating precisely.
+> `scripts/tune_weights.py` exists since S6.4: it sweeps every combination over a labelled
+> set and reports what ranks best. What does not exist is **the labelled set**. Nobody has
+> sat down and judged which resume genuinely fits which posting, and a sweep without
+> judgements is arithmetic over an opinion nobody has expressed. The tool is written; the
+> question it asks is unanswered. See [[#What the tuner says today, and why it is not adopted]].
 
 Every sub-score is returned alongside the total. "81 on semantic fit, 34 on skill overlap"
 tells a student what to do. "62" does not.
@@ -158,9 +160,9 @@ posting on this pair. One pair is not evidence either way, and choosing between 
 data point would be exactly the error this project keeps writing notes about.
 
 **So it is not adopted.** What would settle it is a set of hand-labelled resume/JD pairs and a
-correlation measured both ways — `scripts/tune_weights.py`, S6.4. The docstring now describes
-what the code does; this section records what was tried, with its numbers, so the next person
-does not have to run it again.
+correlation measured both ways. `scripts/tune_weights.py` is now the thing that would measure
+it; the pairs are still missing. The docstring now describes what the code does; this section
+records what was tried, with its numbers, so the next person does not have to run it again.
 
 Two characterization tests pin the property rather than the prose, so the day someone does
 switch to a corpus IDF they get a red test pointing them at this section instead of a silently
@@ -268,6 +270,63 @@ promising ≥55, stretch ≥35 — not by an intuition that a good match should 
 a design posting, because both are technology job documents written in the same register. That
 is the floor of the signal, and it is why the semantic score alone would be a poor matcher and
 why it carries 0.40 rather than 1.00.
+
+---
+
+## What the tuner says today, and why it is not adopted
+
+`scripts/tune_weights.py` (S6.4) sweeps all 1771 weight combinations on a 0.05 grid and
+reports which ranks a labelled set best. Run on the only labels this repository has — two
+postings are relevant to each other when they share a `category` — it produces a clear,
+confident, and **wrong** answer. That is worth writing down, because it is the best
+argument in the vault for not adopting a number just because a script printed it.
+
+Measured 2026-09-01 on the transformer backend. 23 usable queries of 25 candidates, 750
+judged pairs. Three queries are dropped for having no relevant candidate at all: `Cloud
+Engineer`, `UI/UX Designer` and `Business Analyst` are the single-posting families, the
+same three that are unlearnable by leave-one-out in [[Role Classification]], for the same
+reason.
+
+| Signal, alone | Pairwise accuracy | Mean spread within a query |
+|---|---|---|
+| `lexical` | **0.924** | 0.191 |
+| `semantic` | 0.888 | 0.274 |
+| `skill` | 0.856 | 0.467 |
+| `fit` | 0.492 | 0.350 |
+
+| Weights | Pairwise accuracy |
+|---|---|
+| Configured — 0.40 / 0.30 / 0.20 / 0.10 | 0.8972 |
+| Best on the grid — **0.15 / 0.00 / 0.70 / 0.15** | **0.9427** |
+
+A +0.045 improvement that wins 100% of 1000 bootstrap resamples. By every number on the
+page, adopt it.
+
+> [!warning] Read what it actually says: throw away `S_skill` entirely
+> The winning combination gives skill overlap a weight of **zero**, even though skill
+> alone ranks at 0.856. It does that because these queries are **job postings**, and two
+> postings in the same family share enormous amounts of vocabulary — so `lexical` nearly
+> solves the task on its own, and everything else is diluting it.
+>
+> A resume and a job posting do not share vocabulary that way. They are written by
+> different people for different purposes, and closing that gap is the entire reason
+> `S_sem` exists. The label set cannot see that, so the sweep optimises against a task
+> nobody is trying to perform.
+>
+> On the hashing backend the same run recommends **0.00 / 0.00 / 0.85 / 0.15** — semantic
+> *and* skill at zero. A tuner that recommends deleting three of four signals is not
+> reporting a result about the matcher; it is reporting the shape of its evidence.
+
+`fit` at 0.492 is the other half of the same lesson. It varies plenty — mean spread 0.350
+— and it discriminates nothing, because a posting parsed as if it were a resume produces
+years and degree levels unrelated to which family it belongs to. The script prints the
+solo accuracy and the spread side by side for exactly this reason: a signal can move a
+lot and rank nothing.
+
+**So nothing is adopted, and the shipped weights stay at 0.40 / 0.30 / 0.20 / 0.10.** What
+would change them is thirty or so hand-judged resume/posting pairs in the format
+`tune_weights.py` documents, run without `--from-corpus`. The tool is finished. The
+judgements are the work, and they are a person's to do.
 
 ---
 
