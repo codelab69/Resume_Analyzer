@@ -49,7 +49,7 @@ same bar every time.
 | [[#Sprint 2 — Turn the accuracy up]] | Transformer path proven, not assumed | **Complete** — unblocked and measured 2026-08-27 |
 | [[#Sprint 3 — Architecture notes]] | The "how it fits together" half of the vault | Complete |
 | [[#Sprint 4 — Algorithm notes]] | Every algorithm written up for the viva | **Complete** — 9 notes, 13 defects, 2026-08-29 |
-| [[#Sprint 5 — Guides and reference]] | A stranger can set it up unaided | In progress |
+| [[#Sprint 5 — Guides and reference]] | A stranger can set it up unaided | In progress — S5.4 done, 2 defects; S5.5 and S5.6b left |
 | [[#Sprint 6 — Maintenance tooling]] | The data files can be grown safely | In progress — S6.1, S6.2 and S6.3 done |
 | [[#Sprint 7 — Release hardening]] | Demo-day proof | Not started |
 
@@ -57,21 +57,22 @@ same bar every time.
 
 ## Last verified
 
-Everything ticked above was green at the same moment, on 2026-08-31 — except the two rows
+Everything ticked above was green at the same moment, on 2026-09-01 — except the rows
 that say otherwise in their own right-hand column:
 
 | Check | Result | Measured |
 |---|---|---|
-| `pytest` | **374 passed** in 9.1 s (120 at the start of Sprint 1, 322 before S6.2, 343 before S6.3). Run twice, once with `artifacts/role_classifier.joblib` present and once with it moved away — same count both times, which is the point of S6.2a | 2026-08-31 |
-| `scripts/smoke_test.py` | passed, TOTAL **6.8 ms** warm. Not comparable with the 201 ms recorded on 2026-08-29: that run was cold, and after S6.2c the script warms up before it times anything, because a cold `classify` stage was printing 2062.6 ms of scikit-learn import as if it were the cost of classifying | 2026-08-31 |
-| `scripts/import_jobs.py`, round trip | the shipped 26 postings exported to CSV and imported back: **26 read, 26 accepted, 0 rejected, every field identical** through `load_jobs`. The written file spells out `"url": null`, which the hand-written corpus omits; nothing else differs | 2026-08-31 |
-| `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed, on the transformer backend**, with a trained classifier on disk | 2026-08-31 |
-| `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, `role_classifier: trained, 13 labels`, notes empty | 2026-08-31 |
+| `pytest` | **379 passed** in 5.7 s (120 at the start of Sprint 1, 322 before S6.2, 343 before S6.3, 374 before S5.4). Green on four consecutive runs, including after clearing every `__pycache__` and `.pytest_cache` — but **not** on the first run of the session, which gave `363 passed, 11 errors` and has not been reproduced since. See the note under S5.4 | 2026-09-01 |
+| `scripts/smoke_test.py` | passed, TOTAL **5.3 ms** warm on the transformer backend (extract 0.1, segment 0.5, entities 2.8, skills 0.5, classify 1.0, ats 0.5). Not comparable with the 201 ms recorded on 2026-08-29: that run was cold, and after S6.2c the script warms up before it times anything, because a cold `classify` stage was printing 2062.6 ms of scikit-learn import as if it were the cost of classifying | 2026-09-01 |
+| `scripts/import_jobs.py`, round trip | the shipped 26 postings exported to CSV and imported back: **26 read, 26 accepted, 0 rejected, every field identical** through `load_jobs`. The written file spells out `"url": null`, which the hand-written corpus omits; nothing else differs | 2026-08-31, not re-run since |
+| `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed, on the transformer backend**, with a trained classifier on disk — and again, **29/29**, with the transformer forced off, because S5.4 is a note about the degraded path and running it once on the good backend would not have tested that claim | 2026-09-01 |
+| `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, `role_classifier: trained, 13 labels`, notes empty | 2026-09-01 |
 | `npm run build` | clean, no warnings, 1052 modules, largest chunk `charts` 368 kB, 3.5 s | 2026-08-29, not re-run since |
 | All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 29/29 | 2026-08-27, not re-run since |
-| Vault link integrity | **392 links checked: 376 resolve, 16 point at notes still on this board (`Troubleshooting`, `Glossary`, and the literal `[[link]]` two notes use as an example), 0 broken anchors, 0 wrapped across a line.** The wrapped-link check exists because S6.2 wrote one: a wikilink split over two lines, which Obsidian does not match — the same failure mode as the `not yet written` marker in S5.2a. The 2026-08-27 run checked 237 | 2026-08-31 |
+| Vault link integrity | **432 links checked: 426 resolve, 6 point at notes still on this board (three `Glossary`, and the literal `[[link]]` three notes use as an example), 0 broken anchors, 0 wrapped across a line.** Down from 16 pending because [[Troubleshooting]] now exists — including `Home`'s `[[Troubleshooting#The reduced accuracy banner is showing]]`, an anchor the vault had been promising for a week, which is why the note has a section under exactly that name. The wrapped-link check exists because S6.2 wrote one: a wikilink split over two lines, which Obsidian does not match — the same failure mode as the `not yet written` marker in S5.2a. The 2026-08-27 run checked 237 | 2026-09-01 |
 
-The right-hand column exists because two of these rows — `npm run build` and the clean-venv
+The right-hand column exists because three of these rows — `npm run build`, the importer
+round trip and the clean-venv
 run — were not re-run today, and saying so is cheaper than a reader assuming they were. The
 e2e figure in this table used to read 30; it had never been true — see S4.4c.
 
@@ -83,11 +84,11 @@ e2e figure in this table used to read 30; it had never been true — see S4.4c.
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Thirty-four defects have been found by verifying rather than by looking
+> [!note] Thirty-six defects have been found by verifying rather than by looking
 > S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a-c, S4.5a-c, S4.6a-c, S4.7a-d,
-> S4.8a-c, S4.9a, S4.9b, S5.2a, S5.3a, S6.2a-c and S6.3a-d were all found by *running* the thing being
+> S4.8a-c, S4.9a, S4.9b, S5.2a, S5.3a, S5.4a, S5.4b, S6.2a-c and S6.3a-d were all found by *running* the thing being
 > documented instead of trusting an existing comment or a remembered number. None of them would have
-> been caught by reading the code. Twenty-four were invisible to a green test suite, two of them
+> been caught by reading the code. Twenty-six were invisible to a green test suite, two of them
 > on fixtures that could not have failed, and one — S4.2a — was invisible *because* the
 > code read like a correct implementation: clear docstring, named constants, a comment marking the
 > important line, all of it describing an intention rather than the behaviour. That is the
@@ -1250,7 +1251,91 @@ was rejected and why, and the worked numbers for one real example.
   `TestDocumentedCounts` went red on the addition exactly as S4.3b designed it to, and the
   eight current-state counts were updated while the four dated ones were left alone.*
 
-- [ ] **S5.4 — [[Troubleshooting]]** — symptom → cause → fix, seeded from every bug hit during the build
+- [x] **S5.4 — [[Troubleshooting]]** — symptom → cause → fix, seeded from every bug hit during the build
+  **AC:** somebody stuck can find their symptom, and the entry under it either fixes the
+  problem or names the note that explains why it is not a problem — with every message in
+  it produced on this machine rather than recalled.
+  *Evidence 2026-09-01: every error string in the note was reproduced before it was
+  written. The ten upload and API rejections through a real client; the port-in-use
+  failure by binding 8000 first — `[Errno 10048]`, exit code **3**, and the app's own
+  `Ready on http://127.0.0.1:8000` line printed **before** the bind error, which is the
+  entry a student needs most and the one nobody would have thought to write; both config
+  `ValidationError`s by setting the variables; the missing-corpus `FileNotFoundError` by
+  moving the path; the scan warning and the encrypted-PDF rejection from PDFs built for
+  the purpose. The "the score changed and I changed nothing" table is the same resume and
+  the same JD through both embedding backends: overall **39 → 47**, semantic
+  **0.192 → 0.388**, the other three sub-scores identical to three decimals and the
+  verdict band unchanged in all four rows — which is the honest way to say what the
+  transformer buys. **Seventeen** defects already on this board are named in the note by
+  story number, so a symptom that returns is traceable to the fix that was supposed to
+  have closed it, and writing it found the two below. It also found `Home`'s
+  `[[Troubleshooting#The reduced accuracy banner is showing]]` — an anchor the vault has
+  been promising since Sprint 3 — which is why the note has a section under exactly that
+  name, and one limitation that is stated rather than fixed: a skill under a heading like
+  `SKILLS I WANT TO LEARN` is still counted, measured, and no note had said so. Fixing
+  that means guessing which headings mean "not yet", which would cost more than it saves;
+  saying it costs a row.*
+
+  > [!note] One observation is recorded as unexplained, on purpose
+  > The first suite run of the session — a cold process, 62 s — ended `363 passed, 11
+  > errors`, the eleven being every test that depends on the `train_classifier_module`
+  > fixture. Four later runs, including after clearing every `__pycache__` and
+  > `.pytest_cache`, gave `374 passed` in about 6 s, and the eleven pass in isolation.
+  > The traceback was not captured. The note says so and stops there. Guessing at a cause
+  > and writing it down as a symptom→cause→fix row is precisely the defect this board has
+  > logged four times under a different name; a troubleshooting note is the worst possible
+  > place to start doing it.
+
+- [x] **S5.4a — Defect: a password-protected PDF was reported as a missing package** *(unplanned)*
+  Found by feeding the extractor an encrypted PDF while writing the upload-rejection table
+  in [[Troubleshooting]], in a process where both PDF readers demonstrably worked.
+  **Cause:** `_extract_pdf_pymupdf` and `_extract_pdf_pdfplumber` return `None` for two
+  unrelated reasons — the library will not load, or the library loaded fine and *this
+  file* defeated it. `_extract_pdf` treated both as the first and raised
+  **"No PDF reader is installed. Run: pip install PyMuPDF pdfplumber"**. A student whose
+  resume carries a password — an ordinary thing to do with a document holding your phone
+  number — was sent to install two packages already in their virtualenv, and the one
+  action that would have worked was never named. `app/core/optional.py` exists to keep
+  "absent" and "present but unloadable" apart and says so in its own docstring: *"'Not
+  installed' sends someone to pip; 'installed but will not load' sends them somewhere
+  else entirely, and confusing the two costs hours."* This is that confusion one layer up,
+  with a third state the module never had to model: present, loaded, and beaten by the
+  input.
+  **Fix:** `_unreadable_pdf_message()` asks `optional.available` which readers are
+  actually loadable and blames the file when at least one is. The original sentence
+  survives unchanged for the case it was written for.
+  **AC:** the message names the failure that happened, and the degraded environment still
+  gets told to install a reader.
+  *Evidence 2026-09-01, an AES-256 encrypted PDF and a truncated one, both through
+  `extract()`: "No PDF reader is installed. Run: pip install PyMuPDF pdfplumber" →
+  "This PDF could not be opened by PyMuPDF or pdfplumber. It is most likely
+  password-protected, corrupt, or not a PDF at all. Remove the password or re-export it
+  from your editor, then upload it again." With `optional.load` stubbed to None the
+  original sentence comes back. An image-only PDF is still a **warning on a report**, not
+  a rejection — the neighbouring branch, asserted so the fix cannot swallow it. **4
+  tests**; restoring the old line fails the two that name it and nothing else.*
+
+- [x] **S5.4b — Defect: the 500 handler used an error shape no client could read** *(unplanned)*
+  Found by triggering a 500 on purpose while writing the error-code table, having written
+  nine rows out of the response bodies and needing the tenth.
+  **Cause:** every 4xx in this app is `{"detail": {"detail": …, "code": …}}` because
+  FastAPI wraps whatever an `HTTPException` carries. The catch-all in `main.py` builds its
+  own body and had it flat, so `frontend/src/lib/api.ts` fell through to its string branch
+  and reported `unknown_error`. `internal_error` was named in `main.py`,
+  [[API Reference]] and [[Analysis Pipeline]], and reachable by nothing. The contract test
+  that states the rule — *"Any error missing either breaks error display"* — listed three
+  4xx URLs, which are exactly the three that get their nesting for free. The one handler
+  that had to build the envelope itself was the one the test did not cover.
+  **Fix:** the handler nests its body like everything else.
+  **AC:** every error body in the app has the same shape, including the one nothing wraps.
+  *Evidence 2026-09-01, a route made to raise, through the real handler:
+  `{"detail": "Something went wrong…", "code": "internal_error"}` →
+  `{"detail": {"detail": "Something went wrong…", "code": "internal_error"}}`, and the
+  exception text does not appear in either. Flattening it again fails
+  `test_the_catch_all_500_uses_the_same_envelope` and nothing else. This is the S4.3b
+  family with the roles swapped: not prose beside code that nothing runs, but a test whose
+  own subject line was broader than its three URLs.*
+
 - [ ] **S5.5 — [[Glossary]]** — the terms this vault uses, defined once
 - [x] **S5.6a — [[Decision Log]] exists and covers today's decisions**
   Split out of S5.6 rather than left half-open, per the note on method at the bottom of

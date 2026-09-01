@@ -275,6 +275,37 @@ class TestErrorContract:
             assert isinstance(detail, dict), f"{response.url} returned a bare string"
             assert detail["detail"] and detail["code"]
 
+    def test_the_catch_all_500_uses_the_same_envelope(self, temp_db, monkeypatch):
+        """S5.4b. The one error path the rule above never reached.
+
+        The test above lists three 4xx URLs, all of which get their nesting
+        from FastAPI wrapping an HTTPException. The handler in `main.py`
+        builds its own body and had it flat, so `api.ts` fell through to the
+        string branch and reported `unknown_error` - `internal_error` was
+        named in three notes and reachable by nothing.
+
+        Raising inside a route rather than calling the handler directly,
+        because what is being asserted is what leaves the app.
+        """
+        from fastapi.testclient import TestClient
+
+        from app.api import system as system_api
+        from app.main import app
+
+        def explode():
+            raise RuntimeError("deliberate")
+
+        monkeypatch.setattr(system_api, "stats", explode)
+
+        with TestClient(app, raise_server_exceptions=False) as unguarded:
+            response = unguarded.get("/api/stats")
+
+        assert response.status_code == 500
+        detail = response.json()["detail"]
+        assert isinstance(detail, dict), "a 500 body the frontend cannot parse"
+        assert detail["code"] == "internal_error"
+        assert "deliberate" not in detail["detail"], "the exception leaked to the user"
+
 
 class TestStatsWithData:
     def test_counts_and_averages_reflect_stored_analyses(

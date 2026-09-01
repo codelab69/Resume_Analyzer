@@ -158,9 +158,7 @@ def _extract_pdf(data: bytes) -> ExtractedDocument:
     # Both readers came back empty or unavailable.
     best = doc or fallback
     if best is None:
-        raise ExtractionFailed(
-            "No PDF reader is installed. Run: pip install PyMuPDF pdfplumber"
-        )
+        raise ExtractionFailed(_unreadable_pdf_message())
 
     best.has_text_layer = False
     best.warnings.append(
@@ -169,6 +167,35 @@ def _extract_pdf(data: bytes) -> ExtractedDocument:
         "at all. Re-export the resume as a text PDF from your editor."
     )
     return best
+
+
+def _unreadable_pdf_message() -> str:
+    """Say which of the two failures happened: no reader, or a bad file.
+
+    Both `_extract_pdf_pymupdf` and `_extract_pdf_pdfplumber` return None for
+    two different reasons - the library will not load, or the library loaded
+    fine and *this file* defeated it. Reporting the second as the first told a
+    student with a password-protected resume to `pip install` two packages
+    already sitting in their virtualenv, and never mentioned the one thing
+    that would have worked. See S5.4a on the Sprint Board.
+
+    Keeping "absent" and "present but unloadable" apart is the whole job of
+    optional.py one layer down. This is the same distinction one layer up,
+    where there is a third state: present, loaded, and beaten by the input.
+    """
+    installed = [
+        label
+        for label, module in (("PyMuPDF", "fitz"), ("pdfplumber", "pdfplumber"))
+        if optional.available(module)
+    ]
+    if not installed:
+        return "No PDF reader is installed. Run: pip install PyMuPDF pdfplumber"
+    return (
+        f"This PDF could not be opened by {' or '.join(installed)}. It is "
+        f"most likely password-protected, corrupt, or not a PDF at all. "
+        f"Remove the password or re-export it from your editor, then upload "
+        f"it again."
+    )
 
 
 def _extract_pdf_pymupdf(data: bytes) -> ExtractedDocument | None:

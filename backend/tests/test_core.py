@@ -349,6 +349,73 @@ class TestPdfReaderIntegration:
         )
 
 
+class TestUnreadablePdfMessage:
+    """S5.4a. Two different failures that used to print one sentence.
+
+    A PDF reader returns None both when it is not installed and when it is
+    installed, loaded, and beaten by the file in front of it. Only the first
+    of those is fixed by pip, and the message said pip for both - so a student
+    whose resume is password-protected was sent to install two packages that
+    were already there, and the fix that would have worked was never named.
+
+    Written from the failure it was found by: a real encrypted PDF, in a
+    process where both readers demonstrably work.
+    """
+
+    @staticmethod
+    def _password_protected_pdf(fitz) -> bytes:
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "Kiran Anandan", fontsize=11, fontname="helv")
+        data = doc.tobytes(
+            encryption=fitz.PDF_ENCRYPT_AES_256, user_pw="secret", owner_pw="secret"
+        )
+        doc.close()
+        return data
+
+    def test_a_password_protected_pdf_is_not_reported_as_a_missing_package(self):
+        fitz = pytest.importorskip("fitz", reason="PyMuPDF not installed")
+        with pytest.raises(extract.ExtractionFailed) as raised:
+            extract.extract(self._password_protected_pdf(fitz), "resume.pdf")
+
+        message = str(raised.value)
+        assert "pip install" not in message, message
+        assert "password" in message.lower(), message
+
+    def test_a_corrupt_pdf_blames_the_file_and_names_the_readers_that_tried(self):
+        pytest.importorskip("fitz", reason="PyMuPDF not installed")
+        with pytest.raises(extract.ExtractionFailed) as raised:
+            extract.extract(b"%PDF-1.4\nnot really a pdf", "resume.pdf")
+
+        message = str(raised.value)
+        assert "pip install" not in message, message
+        assert "PyMuPDF" in message, message
+
+    def test_with_no_reader_loadable_it_still_says_to_install_one(self, monkeypatch):
+        # The original message, still correct for the case it was written for.
+        # This is the degraded environment the whole project promises to keep
+        # usable, so the advice has to survive the fix above.
+        monkeypatch.setattr(extract.optional, "load", lambda name: None)
+        with pytest.raises(extract.ExtractionFailed) as raised:
+            extract.extract(b"%PDF-1.4\nnot really a pdf", "resume.pdf")
+
+        assert "pip install PyMuPDF pdfplumber" in str(raised.value)
+
+    def test_a_scan_is_still_a_warning_rather_than_a_failure(self):
+        # The neighbouring branch. A page that opens and has no text layer is
+        # a report with a warning on it, not an error - fixing the message
+        # above must not turn a readable-but-empty PDF into a rejection.
+        fitz = pytest.importorskip("fitz", reason="PyMuPDF not installed")
+        doc = fitz.open()
+        doc.new_page().draw_rect(fitz.Rect(50, 50, 300, 300), fill=(0.5, 0.5, 0.5))
+        data = doc.tobytes()
+        doc.close()
+
+        document = extract.extract(data, "resume.pdf")
+        assert document.has_text_layer is False
+        assert any("scan" in warning for warning in document.warnings)
+
+
 # ---------------------------------------------------------------------------
 # segment
 # ---------------------------------------------------------------------------

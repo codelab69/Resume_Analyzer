@@ -32,6 +32,12 @@ The one exception is FastAPI's own request validation, which returns `422` with 
 **array** under `detail`. `frontend/src/lib/api.ts` handles both shapes; anything else
 consuming this API has to as well.
 
+There used to be a second exception, and it is worth knowing it was looked for: the
+catch-all handler in `app/main.py` builds its own body rather than getting the nesting
+from an `HTTPException`, and had it flat — so `internal_error` was documented here and in
+[[Analysis Pipeline]] and reachable by no client, which read it as `unknown_error`. It is
+nested now, and a test covers it. See S5.4b on [[Sprint Board]].
+
 ### Upload failures are all `400`
 
 `unsupported_type`, `unreadable_file` and `analysis_failed` all return `400`. From the

@@ -165,6 +165,10 @@ gate. Run it after every deployment and before every demo.
 Then open the frontend and upload `backend/tests/fixtures/sample_resume.txt`. If a
 report renders, the whole stack is working.
 
+If one of the three fails, or the report renders and looks wrong,
+[`docs/Troubleshooting`](docs/Troubleshooting.md) is organised by symptom — including the
+answers that look wrong and are not.
+
 ### Optional: train the role classifier
 
 The app ships without a trained model. `artifacts/` is not in git, so a fresh clone runs

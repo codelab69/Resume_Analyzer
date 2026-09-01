@@ -50,6 +50,7 @@ This vault is the written half of the project. Open it in [Obsidian](https://obs
 - [[Setup Guide]] — install, run, and verify in about ten minutes
 - [[Deployment]] — where each half goes and the one hosting trap to avoid
 - [[Extending the Ontology]] — adding skills, headings and action verbs
+- [[Troubleshooting]] — symptom → cause → fix, and the answers that look wrong and are not
 
 ## Testing
 

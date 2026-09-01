@@ -93,18 +93,24 @@ for router in ROUTERS:
 async def unhandled_error(request: Request, exc: Exception) -> JSONResponse:
     """Last-resort handler so an unexpected bug returns JSON, not an HTML page.
 
-    The frontend parses every error body as `{detail, code}`. An unhandled
-    exception would otherwise produce a plain-text 500 that the error toast
-    renders as "[object Object]".
+    The envelope is nested to match every other error in the app:
+    `{"detail": {"detail": ..., "code": ...}}`. FastAPI produces that nesting
+    for an HTTPException by wrapping whatever is passed as `detail`; nothing
+    wraps this one, so it has to be written out. It used to be flat, which
+    meant `frontend/src/lib/api.ts` fell through to its string branch and
+    reported `unknown_error` - so `internal_error` was documented in three
+    notes and reachable by no client. See S5.4b on the Sprint Board.
     """
     log.exception("Unhandled error on %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
         content={
-            "detail": (
-                "Something went wrong on the server. The error has been logged."
-            ),
-            "code": "internal_error",
+            "detail": {
+                "detail": (
+                    "Something went wrong on the server. The error has been logged."
+                ),
+                "code": "internal_error",
+            }
         },
     )
 
