@@ -1364,6 +1364,124 @@ class TestScriptPathsInTheCode:
         assert on_disk <= mentioned, sorted(on_disk - mentioned)
 
 
+class TestGlossaryConstants:
+    """S5.5. The numbers [[Glossary]] states are the numbers in the code.
+
+    D8 said numbers stated in the README are asserted by tests, because a
+    plausible-looking wrong number is invisible until somebody checks and
+    nobody checks a number that looks right. The glossary is the densest
+    collection of stated constants in the vault - a whole table of them,
+    gathered specifically so a reader does not have to go and look - which
+    makes it the largest surface in the project for exactly that defect.
+
+    So the table is asserted cell by cell, against the constants themselves
+    rather than against a remembered value. The cell is compared whole, not
+    searched for a substring: `5` appears inside `1.5`, and a check that
+    cannot fail is worse than no check.
+
+    One number here is not pinned and says so: the transformer's 384
+    dimensions is a property of `all-MiniLM-L6-v2`, not a constant in this
+    repository, and the suite has to pass with sentence-transformers
+    uninstalled. The hashing half of that cell is pinned.
+    """
+
+    GLOSSARY = pathlib.Path(__file__).resolve().parents[2] / "docs" / "Glossary.md"
+
+    def _cell(self, label: str) -> str:
+        """The first column of the table row whose text contains `label`."""
+        for line in self.GLOSSARY.read_text(encoding="utf-8").splitlines():
+            if line.startswith("|") and label in line:
+                return line.split("|")[1].strip()
+        raise AssertionError(f"[[Glossary]] no longer has a row for {label!r}")
+
+    def test_the_numbers_table_matches_the_code(self):
+        from app.config import settings
+        from app.core import matcher, recommend
+
+        weights = settings.match_weights
+        degrees = sorted(set(entities.DEGREE_LEVEL.values()))
+
+        expected = {
+            "ATS rules": str(len(ats.RULES)),
+            "Default match weights": " / ".join(
+                f"{weights[part]:.2f}"
+                for part in ("semantic", "skill", "lexical", "fit")
+            ),
+            "Skill-gap severity thresholds": (
+                f"{matcher.CRITICAL_RATIO:.2f} / {matcher.IMPORTANT_RATIO:.2f}"
+            ),
+            "BM25": f"{recommend.BM25_K1:g} / {recommend.BM25_B:g}",
+            # 384 is the model's, not ours. See the class docstring.
+            "Embedding dimensions": f"384 / {embed.HASHING_DIMENSIONS}",
+            "Fuzzy match threshold": (
+                f"{skills.FUZZY_THRESHOLD} / {skills.FUZZY_MIN_LENGTH}"
+            ),
+            "no text layer": str(extract.SCANNED_PDF_THRESHOLD),
+            "Degree levels": " / ".join(str(level) for level in degrees),
+            "Years of experience assumed": f"{matcher.DEFAULT_EXPECTED_YEARS:.1f}",
+            "Default upload limit": f"{settings.max_upload_mb} MB",
+        }
+
+        wrong = {
+            label: (self._cell(label), value)
+            for label, value in expected.items()
+            if self._cell(label) != value
+        }
+        assert not wrong, f"[[Glossary]] states (found, expected): {wrong}"
+
+    def test_the_verdict_bands_are_the_ones_the_glossary_names(self):
+        # Asserted through the property rather than by reading the literals,
+        # because what a reader needs to be true is the behaviour at the
+        # boundary, not the presence of a number in the source.
+        from app.core.matcher import MatchResult, SubScores
+
+        def verdict(score: int) -> str:
+            return MatchResult(score=score, sub_scores=SubScores(0, 0, 0, 0)).verdict
+
+        stated = [int(n) for n in self._cell("Verdict thresholds").split(" / ")]
+        assert stated == [75, 55, 35], stated
+
+        strong, promising, stretch = stated
+        assert verdict(strong) == "strong" and verdict(strong - 1) == "promising"
+        assert verdict(promising) == "promising" and verdict(promising - 1) == "stretch"
+        assert verdict(stretch) == "stretch" and verdict(stretch - 1) == "weak"
+
+    def test_the_counts_it_states_match_the_data_files(self):
+        # Three counts the glossary gives as facts about the ontology and the
+        # corpus. Every one of them moves the first time somebody edits a data
+        # file, which is the argument for asserting them here rather than
+        # trusting the note.
+        data = segment.DATA_DIR
+        skills_file = json.loads((data / "skills.json").read_text(encoding="utf-8"))
+        jobs_file = json.loads((data / "jobs.json").read_text(encoding="utf-8"))
+        headings = json.loads((data / "headings.json").read_text(encoding="utf-8"))
+
+        skill_categories = {entry.get("category") for entry in skills_file["skills"]}
+        role_families = {posting.get("category") for posting in jobs_file["jobs"]}
+        sections = [name for name in headings if not name.startswith("_")]
+
+        assert self._cell("Role families") == str(len(role_families))
+
+        text = self.GLOSSARY.read_text(encoding="utf-8")
+        for label, actual in (
+            ("kind of skill", len(skill_categories)),
+            ("role family", len(role_families)),
+        ):
+            row = next(
+                line for line in text.splitlines()
+                if line.startswith("|") and label in line
+            )
+            claimed = re.search(r"(\d+) of them", row)
+            assert claimed, f"[[Glossary]] no longer counts the {label!r} values"
+            assert int(claimed.group(1)) == actual, (label, claimed.group(1), actual)
+
+        # The two thirteens the note warns are unrelated must still be two.
+        assert len(sections) == len(role_families), (
+            "the glossary's 'two different thirteens' warning assumes these are "
+            "equal by coincidence; if they diverge, the warning has to change"
+        )
+
+
 class TestSectionSpans:
     def test_a_span_slices_the_original_document(self):
         text = "SKILLS\n\n  Python, SQL  \n\nEDUCATION\nB.E. 2026\n"

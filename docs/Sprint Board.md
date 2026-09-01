@@ -49,7 +49,7 @@ same bar every time.
 | [[#Sprint 2 — Turn the accuracy up]] | Transformer path proven, not assumed | **Complete** — unblocked and measured 2026-08-27 |
 | [[#Sprint 3 — Architecture notes]] | The "how it fits together" half of the vault | Complete |
 | [[#Sprint 4 — Algorithm notes]] | Every algorithm written up for the viva | **Complete** — 9 notes, 13 defects, 2026-08-29 |
-| [[#Sprint 5 — Guides and reference]] | A stranger can set it up unaided | In progress — S5.4 done, 2 defects; S5.5 and S5.6b left |
+| [[#Sprint 5 — Guides and reference]] | A stranger can set it up unaided | In progress — S5.4 and S5.5 done, 2 defects; S5.6b left |
 | [[#Sprint 6 — Maintenance tooling]] | The data files can be grown safely | In progress — S6.1, S6.2 and S6.3 done |
 | [[#Sprint 7 — Release hardening]] | Demo-day proof | Not started |
 
@@ -62,14 +62,14 @@ that say otherwise in their own right-hand column:
 
 | Check | Result | Measured |
 |---|---|---|
-| `pytest` | **379 passed** in 5.7 s (120 at the start of Sprint 1, 322 before S6.2, 343 before S6.3, 374 before S5.4). Green on four consecutive runs, including after clearing every `__pycache__` and `.pytest_cache` — but **not** on the first run of the session, which gave `363 passed, 11 errors` and has not been reproduced since. See the note under S5.4 | 2026-09-01 |
+| `pytest` | **382 passed** in 6.6 s (120 at the start of Sprint 1, 322 before S6.2, 343 before S6.3, 374 before S5.4, 379 before S5.5). Green on four consecutive runs, including after clearing every `__pycache__` and `.pytest_cache` — but **not** on the first run of the session, which gave `363 passed, 11 errors` and has not been reproduced since. See the note under S5.4 | 2026-09-01 |
 | `scripts/smoke_test.py` | passed, TOTAL **5.3 ms** warm on the transformer backend (extract 0.1, segment 0.5, entities 2.8, skills 0.5, classify 1.0, ats 0.5). Not comparable with the 201 ms recorded on 2026-08-29: that run was cold, and after S6.2c the script warms up before it times anything, because a cold `classify` stage was printing 2062.6 ms of scikit-learn import as if it were the cost of classifying | 2026-09-01 |
 | `scripts/import_jobs.py`, round trip | the shipped 26 postings exported to CSV and imported back: **26 read, 26 accepted, 0 rejected, every field identical** through `load_jobs`. The written file spells out `"url": null`, which the hand-written corpus omits; nothing else differs | 2026-08-31, not re-run since |
 | `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed, on the transformer backend**, with a trained classifier on disk — and again, **29/29**, with the transformer forced off, because S5.4 is a note about the degraded path and running it once on the good backend would not have tested that claim | 2026-09-01 |
 | `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, `role_classifier: trained, 13 labels`, notes empty | 2026-09-01 |
 | `npm run build` | clean, no warnings, 1052 modules, largest chunk `charts` 368 kB, 3.5 s | 2026-08-29, not re-run since |
 | All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 29/29 | 2026-08-27, not re-run since |
-| Vault link integrity | **432 links checked: 426 resolve, 6 point at notes still on this board (three `Glossary`, and the literal `[[link]]` three notes use as an example), 0 broken anchors, 0 wrapped across a line.** Down from 16 pending because [[Troubleshooting]] now exists — including `Home`'s `[[Troubleshooting#The reduced accuracy banner is showing]]`, an anchor the vault had been promising for a week, which is why the note has a section under exactly that name. The wrapped-link check exists because S6.2 wrote one: a wikilink split over two lines, which Obsidian does not match — the same failure mode as the `not yet written` marker in S5.2a. The 2026-08-27 run checked 237 | 2026-09-01 |
+| Vault link integrity | **456 links checked: 452 resolve, 0 point at notes still on this board, 0 broken anchors, 0 wrapped across a line.** The four that do not resolve are the literal `[[link]]` three notes use as an example of the syntax. Zero for the first time, down from 16 on 2026-08-31: [[Troubleshooting]] and [[Glossary]] now exist, and with them `Home`'s `[[Troubleshooting#The reduced accuracy banner is showing]]`, an anchor the vault had been promising for a week, which is why that note has a section under exactly that name. The wrapped-link check exists because S6.2 wrote one: a wikilink split over two lines, which Obsidian does not match — the same failure mode as the `not yet written` marker in S5.2a. The 2026-08-27 run checked 237 | 2026-09-01 |
 
 The right-hand column exists because three of these rows — `npm run build`, the importer
 round trip and the clean-venv
@@ -1336,7 +1336,51 @@ was rejected and why, and the worked numbers for one real example.
   family with the roles swapped: not prose beside code that nothing runs, but a test whose
   own subject line was broader than its three URLs.*
 
-- [ ] **S5.5 — [[Glossary]]** — the terms this vault uses, defined once
+- [x] **S5.5 — [[Glossary]]** — the terms this vault uses, defined once
+  **AC:** a reader who meets one of this project's words in a note or a response can find
+  out what it means here, in one place, with the file that owns it named — and every
+  number the note states is asserted against the code rather than trusted.
+  *Evidence 2026-09-01: which terms to define was **measured, not guessed**. Every
+  candidate was counted across the 22 notes that existed before this one, word-boundary
+  matched rather than by substring — the first pass reported `recall` in six notes and
+  `NER` in twenty, both of which were `recalled` and `corner`. What the clean count showed
+  is what the note is built around: **`backend` is the most-used technical word in the
+  vault, 198 times across 20 notes, and it means four different things** — the server
+  half, the embedding backend, the classifier backend, and half of the role name "Backend
+  Developer". That is why section 1 is five overloaded words rather than an A-to-Z, and
+  why it comes first. The other four are `category` (a skill kind in `skills.json`, a role
+  family in `jobs.json` — both reaching the API under that name, in
+  `skills_by_category` and `JobOut.category`), `confidence` (weighted recall on one
+  backend, a softmax on the other, so the same 0.10 means two different things),
+  `profile` (the parsed facts about the person, and the classifier that is not the trained
+  one — both present in one report) and `score` (ATS versus match). Every definition was
+  read out of the code: the four sub-score weights, `CRITICAL_RATIO`/`IMPORTANT_RATIO`,
+  `BM25_K1`/`BM25_B`, `FUZZY_THRESHOLD`/`FUZZY_MIN_LENGTH`, `SCANNED_PDF_THRESHOLD`,
+  `DEGREE_LEVEL`, `HASHING_DIMENSIONS`. Writing the action-verb entry is what caught the
+  one claim in the draft that was wrong: it said the file holds base forms, and the file's
+  own header says base **or past tense**, which is the form a bullet actually starts with.
+  **382 tests** (3 new).*
+
+  > [!important] The glossary is the largest surface in this project for the D8 defect
+  > A table of constants gathered specifically so a reader does not have to go and look
+  > is, by construction, the densest collection of numbers in the vault that nothing runs.
+  > So `TestGlossaryConstants` asserts the table **cell by cell against the constants
+  > themselves** — whole cell, not substring, because `5` appears inside `1.5` and a check
+  > that cannot fail is worse than no check. Four mutations, each failing the test that
+  > names it, and **one of them on the code side** (`CRITICAL_RATIO = 0.75 → 0.80`), which
+  > is the one that proves the test reads the source rather than only the note. The
+  > verdict bands are asserted through the `verdict` property at both sides of each
+  > boundary rather than by finding the literals, because what a reader needs to be true
+  > is the behaviour, not the presence of a number in the file. One cell is deliberately
+  > half-pinned and says so in the test: the transformer's 384 dimensions is a property of
+  > `all-MiniLM-L6-v2`, not a constant in this repository, and the suite has to pass with
+  > sentence-transformers uninstalled.
+
+  > [!note] The vault has no dangling links left
+  > **456 links checked, 452 resolve, 0 broken anchors, 0 wrapped across a line.** The
+  > four that do not resolve are the literal `[[link]]` that `Home`, `Setup Guide` and
+  > this board (twice) use as an example of the syntax. This is the first time the count of
+  > links pointing at unwritten notes has been **zero** — it was 16 on 2026-08-31.
 - [x] **S5.6a — [[Decision Log]] exists and covers today's decisions**
   Split out of S5.6 rather than left half-open, per the note on method at the bottom of
   this board. S2.4's acceptance criteria required somewhere to record the
