@@ -64,6 +64,19 @@ That asks *"is each thing they want covered somewhere?"* A whole-document cosine
 these two documents alike on average"*, which is a different question and one that rewards
 padding: add three paragraphs about anything and the average moves.
 
+> [!warning] That argument is not supported by the only ablation of it
+> It was reasoning, and it went unmeasured until S5.6b. On both measures available,
+> whole-document cosine does better: it separates a matching from an unrelated posting at
+> **0.286** against max-pooling's **0.083**, and ranks the job corpus at **0.9401** against
+> **0.8877**. Pooling only over the lines a posting bullets as requirements narrows the gap
+> and does not close it.
+>
+> The code is unchanged, deliberately — both measures are weak in ways
+> [[Decision Log#D11 — Matching is chunk-to-chunk with max-pooling, and the first ablation does not support it]]
+> names, and one of them is the corpus set S6.4 had just shown to be misleading. It is open
+> as S7.6 on the [[Sprint Board]]. Read the paragraph above as the case for the current
+> design, not as a finding.
+
 Both sides are encoded in **one batched call**. Encoding in a loop is an order of magnitude
 slower on the transformer backend.
 

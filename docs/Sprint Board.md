@@ -49,9 +49,9 @@ same bar every time.
 | [[#Sprint 2 — Turn the accuracy up]] | Transformer path proven, not assumed | **Complete** — unblocked and measured 2026-08-27 |
 | [[#Sprint 3 — Architecture notes]] | The "how it fits together" half of the vault | Complete |
 | [[#Sprint 4 — Algorithm notes]] | Every algorithm written up for the viva | **Complete** — 9 notes, 13 defects, 2026-08-29 |
-| [[#Sprint 5 — Guides and reference]] | A stranger can set it up unaided | In progress — S5.4 and S5.5 done, 2 defects; S5.6b left |
+| [[#Sprint 5 — Guides and reference]] | A stranger can set it up unaided | **Complete** — 7 stories, 4 defects, 2026-09-01 |
 | [[#Sprint 6 — Maintenance tooling]] | The data files can be grown safely | **Complete** — 4 stories, 8 defects, 2026-09-01 |
-| [[#Sprint 7 — Release hardening]] | Demo-day proof | Not started |
+| [[#Sprint 7 — Release hardening]] | Demo-day proof | Not started — 6 items, S7.6 opened by S5.6b |
 
 ---
 
@@ -69,7 +69,7 @@ that say otherwise in their own right-hand column:
 | `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, `role_classifier: trained, 13 labels`, notes empty | 2026-09-01 |
 | `npm run build` | clean, no warnings, 1052 modules, largest chunk `charts` 368 kB, 3.5 s | 2026-08-29, not re-run since |
 | All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 29/29 | 2026-08-27, not re-run since |
-| Vault link integrity | **460 links checked: 456 resolve, 0 point at notes still on this board, 0 broken anchors, 0 wrapped across a line.** The four that do not resolve are the literal `[[link]]` three notes use as an example of the syntax. Zero for the first time, down from 16 on 2026-08-31: [[Troubleshooting]] and [[Glossary]] now exist, and with them `Home`'s `[[Troubleshooting#The reduced accuracy banner is showing]]`, an anchor the vault had been promising for a week, which is why that note has a section under exactly that name. The wrapped-link check exists because S6.2 wrote one: a wikilink split over two lines, which Obsidian does not match — the same failure mode as the `not yet written` marker in S5.2a. The 2026-08-27 run checked 237 | 2026-09-01 |
+| Vault link integrity | **476 links checked: 472 resolve, 0 point at notes still on this board, 0 broken anchors, 0 wrapped across a line.** The four that do not resolve are the literal `[[link]]` three notes use as an example of the syntax. Zero for the first time, down from 16 on 2026-08-31: [[Troubleshooting]] and [[Glossary]] now exist, and with them `Home`'s `[[Troubleshooting#The reduced accuracy banner is showing]]`, an anchor the vault had been promising for a week, which is why that note has a section under exactly that name. The wrapped-link check exists because S6.2 wrote one: a wikilink split over two lines, which Obsidian does not match — the same failure mode as the `not yet written` marker in S5.2a. The 2026-08-27 run checked 237 | 2026-09-01 |
 
 The right-hand column exists because three of these rows — `npm run build`, the importer
 round trip and the clean-venv
@@ -1391,13 +1391,53 @@ was rejected and why, and the worked numbers for one real example.
   decision, the alternative it beat and the measurement. Every inbound anchor link from
   this board resolves.*
 
-- [ ] **S5.6b — Backfill the decisions made before 2026-08-27**
+- [x] **S5.6b — Backfill the decisions made before 2026-08-27**
   **AC:** the five gaps listed at the bottom of [[Decision Log]] are written up to the
   same standard — decision, alternative, evidence.
   *The gaps: chunk-to-chunk matching with max-pooling (described in [[Analysis Pipeline]]
   as the single biggest accuracy decision, with no ablation recorded anywhere), the four
   match weights, the ten ATS point values, BM25 over TF-IDF cosine, and the `app/core`
   import rules now enforced by `test_architecture.py`.*
+  *Evidence 2026-09-01: D11–D15 written, and the word "evidence" taken literally — four
+  of the five gaps had never been measured, so the measurement was run first and the entry
+  written afterwards, in that order. **Three of the five did not survive it.** D11: four
+  pooling strategies on the same embeddings and fixtures — whole-document cosine separates
+  the matching from the unrelated posting at **0.286** against max-pooling's **0.083**
+  (1.77× against 1.27× as a ratio, which is the fair comparison because max-pooling
+  compresses the range) and ranks the corpus at **0.9401** against **0.8877** on a
+  scale-invariant metric where compression cannot flatter it. Pooling only over the lines a
+  posting bullets as requirements narrows it to 0.126 and does not close it. D13: the ten
+  ATS point values are worth **one point** of separation against a flat ten each — 58
+  versus 59, in the wrong direction — so they are recorded as an editorial judgement about
+  what a student should fix first, which is a thing that table cannot measure. D14: BM25
+  and TF-IDF cosine tie on **17 of 23** queries, BM25 better on 3 and worse on 3, because
+  saturation and length normalisation have nothing to do on postings of 27–65 tokens; BM25
+  stays as a stated bet on the 20,000-row corpus, not as a measured win. D12 is marked an
+  **opinion** under this note's own format rule, because it still is one. D15 is the only
+  entry whose evidence was already sitting there: S1.2a is what the optional-import rule
+  costs when it is prose.*
+
+  > [!important] Writing an evidence line is not the same as having evidence
+  > Four of these five entries could have been written as confident paragraphs in twenty
+  > minutes. Every one of those paragraphs would have been wrong or unsupported, and would
+  > have read exactly like the rest of this vault. The gap between "the reasoning is good"
+  > and "the measurement agrees" is the whole subject of this board, and D11 is the
+  > sharpest instance of it so far: the design argument for max-pooling is genuinely
+  > persuasive, `embed.chunk`'s docstring calls it the single biggest accuracy decision in
+  > the matcher, and the first test of it says the obvious alternative is better.
+  >
+  > Two smaller things fell out of checking that sentence. The story description above
+  > attributes the phrase to [[Analysis Pipeline]]; it is not in that note and never was —
+  > it is in `embed.py` and the argument is in [[Job Matching]]. And the docstring carrying
+  > it ended *"see the ablation in the project docs"*, pointing at an ablation that had
+  > never been run. That is the S6.3d shape — prose describing work that does not exist —
+  > and it survived because a pointer to a document is harder to check than a path to a
+  > file. Both corrected; the gap description is left as written, because what the story
+  > thought it was doing is part of its record.
+  >
+  > It is not changed here. Both measurements are weak in named ways, and switching the
+  > core of the matcher on the same corpus labels S6.4 had just shown to be misleading
+  > would be the exact error this project keeps documenting. It is opened as **S7.6**.
 
 ---
 
@@ -1696,6 +1736,18 @@ was rejected and why, and the worked numbers for one real example.
 - [ ] **S7.3 — Fix everything the two runs surface, or log it as accepted**
 - [ ] **S7.4 — Deploy both halves and re-run `e2e_check.py` against the deployed URL**
 - [ ] **S7.5 — Rehearse the demo against the deployed build, not localhost**
+- [ ] **S7.6 — Settle the pooling question on judged pairs** *(opened by S5.6b)*
+  **AC:** the choice between max-pooling and one vector per document is made on
+  judgements a person made, not on postings standing in for resumes — and whichever
+  wins, [[Analysis Pipeline]] and [[Decision Log#D11 — Matching is chunk-to-chunk with max-pooling, and the first ablation does not support it]]
+  say the same thing afterwards.
+  *Both measurements behind D11 are weak in the same way S6.4's were: one hand-made pair,
+  and a corpus set where postings stand in for resumes and share vocabulary in a way a
+  resume never does — which flatters document-level similarity exactly as it flattered
+  `S_lex` in S6.4. What settles it is the same thirty hand-judged resume/posting pairs
+  D12 is waiting on, run through `scripts/tune_weights.py` with the semantic strategy
+  swapped. One label set answers both questions, which is the argument for making it
+  the next real piece of work rather than another tool.*
 
 ---
 

@@ -275,8 +275,21 @@ def chunk(text: str) -> list[str]:
     One vector for a whole two-page resume averages every bullet into a blur,
     and a strong match on a single requirement disappears into the mean.
     Comparing bullet-to-requirement and max-pooling keeps that signal. This is
-    the single biggest accuracy decision in the matcher - see the ablation in
-    the project docs.
+    the single biggest accuracy decision in the matcher.
+
+    THE ABLATION DOES NOT AGREE, AND THAT IS RECORDED RATHER THAN BURIED
+    -------------------------------------------------------------------
+    That paragraph was an argument, not a result, and the sentence after it
+    used to promise "the ablation in the project docs" when no ablation had
+    ever been run. S5.6b ran one. On both measures available, one vector per
+    document beats max-pooling: it separates a matching from an unrelated
+    posting at 0.286 against 0.083, and ranks the job corpus at 0.9401 against
+    0.8877.
+
+    Nothing is changed here yet, because both measures are weak in named ways
+    and switching the core of the matcher on them would be a worse mistake
+    than leaving an unproven design in place. See Decision Log D11, and S7.6
+    on the Sprint Board, which is the story that settles it.
     """
     if not text:
         return []
