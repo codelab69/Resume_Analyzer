@@ -162,6 +162,12 @@ what an in-process test client cannot: multipart encoding, CORS headers, the ASG
 server itself. It exits non-zero on the first failure, which makes it usable as a CI
 gate. Run it after every deployment and before every demo.
 
+> **Running it from an editor instead?** Two terminals work fine and nothing here needs
+> an editor. If you want breakpoints, `docs/Setup Guide.md` §7 has the VS Code
+> `launch.json`, `tasks.json` and `settings.json` to paste, plus the PyCharm and LSP
+> equivalents — and the one setting that decides whether any of it works, which is that
+> `uvicorn` has to run with `backend/` as its working directory.
+
 Then open the frontend and upload `backend/tests/fixtures/sample_resume.txt`. If a
 report renders, the whole stack is working.
 

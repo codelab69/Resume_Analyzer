@@ -313,12 +313,219 @@ Section 8 has the fix.
 | Tool | What for | Needed? |
 |---|---|---|
 | **Obsidian** — <https://obsidian.md> | Open `docs/` as a vault and every `[[link]]` resolves, with a graph view | No. The notes are plain Markdown and read fine in any editor |
-| **VS Code** — <https://code.visualstudio.com> | Editing, with the Python and ESLint extensions | No |
+| **VS Code** — <https://code.visualstudio.com> | Editing, and running both halves with breakpoints — see [[#7. Running it from an editor]] | No |
 | **DB Browser for SQLite** — <https://sqlitebrowser.org> | Opening `backend/storage/app.db` to see stored rows | No |
 
 ---
 
-## 7. Moving to a different machine — the checklist
+## 7. Running it from an editor
+
+Everything above works from two terminals, and two terminals is a perfectly good way to
+run this project. This section is for when you want breakpoints — stopping inside
+`entities.py` while a real upload is in flight is worth more than any amount of `print`.
+
+> [!important] One thing decides whether any of this works: the working directory
+> `uvicorn app.main:app` **must** run from `backend/`. The import path is relative to the
+> working directory, not to the file, so launching it from the repository root gives
+> `ModuleNotFoundError: No module named 'app'` — which reads like a broken install and is
+> not one. Every configuration below sets `cwd` for exactly this reason.
+
+### VS Code
+
+**Extensions.** Two, and nothing else is required:
+
+| Extension | ID | What it does here |
+|---|---|---|
+| Python | `ms-python.python` | Interpreter selection, the Test Explorer, debugging |
+| ESLint | `dbaeumer.vscode-eslint` | Lints the frontend as you type |
+
+Obsidian's vault features have no VS Code equivalent, but the notes in `docs/` are plain
+Markdown and preview fine with the built-in viewer.
+
+**Point it at the virtual environment.** <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> →
+*Python: Select Interpreter* → `./backend/.venv/Scripts/python.exe`. The status bar
+should then read `.venv`. If it reads a system Python, imports resolve against the wrong
+packages and the Test Explorer finds nothing.
+
+**Then write three files.** `.vscode/` is in `.gitignore` — deliberately, because editor
+setup is personal and does not belong to everybody who clones this — so these are yours
+to paste, not something the repository ships.
+
+`.vscode/settings.json`:
+
+```json
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.cwd": "${workspaceFolder}/backend",
+  "python.testing.pytestArgs": ["tests"],
+  "python.analysis.extraPaths": ["${workspaceFolder}/backend"],
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.venv": true
+  }
+}
+```
+
+`python.analysis.extraPaths` is what stops `from app.core import pipeline` showing up
+underlined in red. The package is not installed — `conftest.py` puts `backend/` on
+`sys.path` at test time — so the language server has to be told separately.
+
+`.vscode/launch.json`:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend (uvicorn)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--port", "8000", "--reload"],
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Backend, degraded path",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--port", "8000"],
+      "cwd": "${workspaceFolder}/backend",
+      "env": { "USE_TRANSFORMER_EMBEDDINGS": "false" },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Smoke test",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/backend/scripts/smoke_test.py",
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ]
+}
+```
+
+Three deliberate choices in there:
+
+- **`justMyCode: false`.** Half the interesting failures in this project are one frame
+  inside a library — a scipy DLL that will not load, a PyMuPDF call that returns nothing.
+  With the default `true` the debugger refuses to step into any of it.
+- **No `--reload` on the degraded configuration.** The reloader runs your code in a child
+  process, and environment variables set per-configuration reach the parent. Without
+  `--reload` there is one process and `USE_TRANSFORMER_EMBEDDINGS` is read where you
+  expect. The reloader is fine for the normal configuration, where nothing depends on the
+  environment.
+- **A separate degraded configuration at all.** Roughly a third of the defects on
+  [[Sprint Board]] were invisible on a machine with the transformer working. Being one
+  click away from the fallback is the point.
+
+`.vscode/tasks.json`, so the frontend starts from the same window:
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "frontend: dev server",
+      "type": "shell",
+      "command": "npm run dev -- --host 127.0.0.1",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": [{ "regexp": ".", "file": 1, "location": 2, "message": 3 }],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*VITE.*",
+          "endsPattern": ".*Local:.*"
+        }
+      },
+      "presentation": { "panel": "dedicated", "group": "run" }
+    },
+    {
+      "label": "frontend: typecheck",
+      "type": "shell",
+      "command": "npm run typecheck",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "problemMatcher": ["$tsc"],
+      "group": "build"
+    },
+    {
+      "label": "backend: e2e check",
+      "type": "shell",
+      "command": "${workspaceFolder}/backend/.venv/Scripts/python.exe scripts/e2e_check.py",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "problemMatcher": []
+    },
+    {
+      "label": "docs: check links",
+      "type": "shell",
+      "command": "${workspaceFolder}/backend/.venv/Scripts/python.exe scripts/check_vault_links.py",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "problemMatcher": []
+    }
+  ]
+}
+```
+
+`--host 127.0.0.1` is not decoration. Vite binds IPv6 `[::1]` by default; Firefox and
+WebKit resolve `localhost` to IPv4 first and get connection refused, so
+`scripts/check_frontend.py` cannot reach the app in two of the three engines it tests.
+Chromium papers over it, which is what makes it confusing.
+
+**What you can then do**
+
+| Action | How |
+|---|---|
+| Start the API with breakpoints | <kbd>F5</kbd>, *Backend (uvicorn)* |
+| Start the frontend | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> → *Run Task* → `frontend: dev server` |
+| Run the whole suite | Test Explorer, the flask icon in the sidebar |
+| Run or debug **one** test | The ▷ beside it in the gutter, or right-click → *Debug Test* |
+| Step through the pipeline on a real upload | Breakpoint in `app/core/pipeline.py`, <kbd>F5</kbd>, then upload from the browser |
+| See what the fallback does | <kbd>F5</kbd>, *Backend, degraded path* |
+
+### Other editors
+
+**PyCharm.** *Settings → Project → Python Interpreter → Add → Existing → `backend/.venv`*.
+Then one run configuration: module `uvicorn`, parameters `app.main:app --port 8000
+--reload`, **working directory `backend`**. Mark `backend/` as a Sources Root so imports
+resolve. PyCharm's pytest runner needs the same working directory.
+
+**Neovim, Helix, Zed, anything with an LSP.** Point `pyright`/`basedpyright` at the venv
+and add `backend` to its search path — a `pyrightconfig.json` in the repository root with
+`{"venvPath": "backend", "venv": ".venv", "extraPaths": ["backend"]}` does both. Debugging
+is `debugpy` either way.
+
+**Anything at all.** Nothing in this project needs an editor to run. Two terminals, the
+four commands in §3, and you are done. Everything above only buys you breakpoints and one
+fewer window.
+
+### The traps, all in one place
+
+| What you see | Why | Fix |
+|---|---|---|
+| `ModuleNotFoundError: No module named 'app'` | Launched from the repository root | Set `cwd` to `backend` |
+| Test Explorer finds no tests | Wrong interpreter, or `python.testing.cwd` unset | Select `./backend/.venv/...`, set `cwd` to `backend` |
+| `from app.core import …` underlined, but it runs fine | The package is not installed; `conftest.py` fixes `sys.path` at test time only | `python.analysis.extraPaths` |
+| The debugger will not step into a library frame | `justMyCode` defaults to `true` | Set it `false` |
+| **The first test run of a session shows 11 errors** | Windows Application Control blocking scipy's compiled extensions until it has evaluated them | Run it again. See [[Troubleshooting#The first pytest run of a session reports eleven errors]] |
+| The frontend starts but `check_frontend.py` cannot reach it in Firefox | Vite bound IPv6 only | `npm run dev -- --host 127.0.0.1` |
+| Breakpoints in the degraded configuration never hit, or the env var is ignored | `--reload` puts your code in a child process | Drop `--reload` on that configuration |
+
+---
+
+## 8. Moving to a different machine — the checklist
 
 Copy this and tick as you go.
 
@@ -363,7 +570,7 @@ automatically. The list matters when copying a folder on a USB stick.
 
 ---
 
-## 8. When something goes wrong
+## 9. When something goes wrong
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -383,7 +590,7 @@ More in [[Troubleshooting]].
 
 ---
 
-## 9. What you do **not** need
+## 10. What you do **not** need
 
 Worth stating, because setup guides for projects like this usually demand them:
 

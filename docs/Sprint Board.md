@@ -69,7 +69,7 @@ that say otherwise in their own right-hand column:
 | `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, `role_classifier: trained, 13 labels`, notes empty. Also checked degraded: **`status: degraded`**, `hashing`, one note naming the reason; and with the artifact moved aside: `role_classifier: profile, 13 roles` | 2026-09-02 |
 | `npm run typecheck` and `npm run build` | `tsc --noEmit` clean; build clean, no chunk-size warning, 1052 modules, 7.0 s, largest chunk `charts` 368.45 kB (108.04 kB gzipped). All four vendor chunks split as intended | 2026-09-02 |
 | All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 29/29 | 2026-08-27, not re-run since |
-| Vault link integrity | **489 links checked in 24 notes: 489 resolve, 0 point at a note that does not exist, 0 broken anchors, 0 wrapped across a line.** This figure now comes from `scripts/check_vault_links.py` rather than from counting by hand — see S7.1h, and all four of its checks were proved by breaking one of each and watching it fail. Not directly comparable with the 476/472 of 2026-09-01: the script excludes inline code, so the four literal `[[link]]` examples that used to be counted-but-unresolved are now not counted at all, and one note has been added since | 2026-09-02 |
+| Vault link integrity | **498 links checked in 24 notes: 498 resolve, 0 point at a note that does not exist, 0 broken anchors, 0 wrapped across a line.** This figure now comes from `scripts/check_vault_links.py` rather than from counting by hand — see S7.1h, and all four of its checks were proved by breaking one of each and watching it fail. Not directly comparable with the 476/472 of 2026-09-01: the script excludes inline code, so the four literal `[[link]]` examples that used to be counted-but-unresolved are now not counted at all, and one note has been added since | 2026-09-02 |
 | [[Complete Testing Plan]], sections a machine can run | **§0, §1, §2, §4, §5, §6, §7, §8, §9 green.** §2 and §6 each carry one open decision, S7.1f and S7.1l. **§3, §10 and §11 were not run** and are not ticked anywhere - they need consented resumes, a deployment and an audience. Full record in [[Complete Testing Plan — v1.0]] | 2026-09-02 |
 | [[Complete Testing Plan]] §6, in real browsers | **Chromium 69/69, Firefox 67/67, WebKit 66/66**, plus Pixel 7 and iPhone 14 device profiles. Contrast measured over **163 text/background pairs per theme**: lowest 4.57 light, 4.82 dark - both were failing before S7.1j and S7.1k, dark at **1.12**. Every screen at 360, 390 and 412 px reports `scrollWidth == clientWidth`. WebKit skips the 8 links when tabbing, which is Safari's default rather than a defect - see S7.1m. Lighthouse not run: Chrome-only tool, not installed | 2026-09-02 |
 | Performance, on the machine that will run the demo | Cold start **9.0-14.3 s** transformer / **2.2-4.0 s** hashing, spread over five and three starts on a laptop that was doing other things; upload+analyse **54.9 ms**, cached **5.1 ms**, match **178.8 ms**, recommendations **62.4 ms** - every row inside its target, medians of five. Ten consecutive uploads showed no drift (first-five median 48 ms, last-five 48 ms). The embedding model loaded **once** across **207** requests in one process. Frontend first contentful paint **604 ms** on the production build (520-676, n=5), against a 2 s target - and **192 ms** with the Google Fonts CDN blocked, which is the number that matters for a rehearsal with the network off | 2026-09-02 |
@@ -1883,14 +1883,14 @@ was rejected and why, and the worked numbers for one real example.
 
 - [x] **S7.1h — `scripts/check_vault_links.py`** *(unplanned)*
   **AC:** the link-integrity figure in "Last verified" comes from a command.
-  **Evidence:** **489 links checked in 24 notes: 489 resolve, 0 missing notes, 0 broken
+  **Evidence:** **498 links checked in 24 notes: 498 resolve, 0 missing notes, 0 broken
   anchors, 0 wrapped across a line.** All four checks were proved by breaking one of each
   and watching it fail, then restoring. Exits non-zero, so it gates.
   Two things the hand count got wrong and this does not: `[[#Anchor]]` links to a heading in
   the *same* note were never checked against anything (the board's velocity table is built
   out of eleven of them), and the four literal `[[link]]` examples were counted as links
   that do not resolve, when they are inside backticks and are not links at all. Which is
-  why 487/487 is not the same measurement as 476/472 and the table says so.
+  why 498/498 is not the same measurement as 476/472 and the table says so.
   *That figure had been produced by hand four times. Adding one note to the vault is what
   made the fifth time worth automating rather than repeating.*
 
@@ -1954,6 +1954,30 @@ was rejected and why, and the worked numbers for one real example.
   *A measurement that disagrees with the thing it measures is wrong until proved
   otherwise. Two of the four real defects were found only after the harness stopped
   producing false ones.*
+
+- [x] **S7.1n — The two open defects are on the issue tracker, and the editor setup is written down** *(unplanned)*
+  **AC:** a defect nobody is fixing this sprint is visible to somebody who is not reading
+  this board; and a developer who wants breakpoints does not have to work out the one
+  setting that makes them possible.
+  **Evidence:** [#1](https://github.com/codelab69/Resume_Analyzer/issues/1) (S7.1f, the
+  renamed `.png`) and [#2](https://github.com/codelab69/Resume_Analyzer/issues/2) (S7.1l,
+  the 23.5 px tap targets), both written to stand on their own — reproduction, the
+  measurement, the two defensible answers and a recommendation — rather than pointing at
+  a story number only this repository understands.
+  [[Setup Guide#7. Running it from an editor]] is new: the VS Code `launch.json`,
+  `tasks.json` and `settings.json` to paste, plus PyCharm and the LSP equivalent, and a
+  table of the seven traps. `.vscode/` stays in `.gitignore` — editor setup is personal,
+  so the guide hands you the file rather than the repository shipping one. Every
+  configuration in it was validated against this checkout: the JSON parses, the
+  interpreter path resolves, `pytest tests` from `backend/` discovers all 416, and
+  `uvicorn` imports as a module.
+  *The section leads with `cwd` because that is the whole game. `uvicorn app.main:app`
+  from the repository root gives `ModuleNotFoundError: No module named 'app'`, which reads
+  like a broken install and is not one — [[Troubleshooting]] has carried that row since
+  Sprint 1 and it is the single most likely way an editor setup fails silently.*
+  Two stale counts in [[Home]] were fixed on the way past: 200 tests where there are 416,
+  and seven defects where there are eleven. That note's own closing rule says a number
+  that disagrees with the code makes the vault stale, not the code wrong.
 
 - [ ] **S7.2 — Run [[Customer Testing Plan]] with at least five real students**
   *Also unblocks §3 of the testing plan, which is the parser accuracy figure the project

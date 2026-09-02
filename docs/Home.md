@@ -16,6 +16,7 @@ This vault is the written half of the project. Open it in [Obsidian](https://obs
 | If you are… | Read |
 |---|---|
 | Setting the project up for the first time | [[Setup Guide]] |
+| Running it in VS Code, PyCharm or an LSP editor | [[Setup Guide#7. Running it from an editor]] |
 | Trying to understand how it works | [[System Architecture]] → [[Analysis Pipeline]] |
 | Changing the scoring | [[ATS Scoring]] and [[Job Matching]] |
 | Writing the report or preparing for the viva | [[Algorithms Overview]] and [[Decision Log]] |
@@ -47,7 +48,7 @@ This vault is the written half of the project. Open it in [Obsidian](https://obs
 
 ## Guides
 
-- [[Setup Guide]] — install, run, and verify in about ten minutes
+- [[Setup Guide]] — install, run, and verify in about ten minutes; §7 covers editors and breakpoints
 - [[Deployment]] — where each half goes and the one hosting trap to avoid
 - [[Extending the Ontology]] — adding skills, headings and action verbs
 - [[Troubleshooting]] — symptom → cause → fix, and the answers that look wrong and are not
@@ -55,7 +56,7 @@ This vault is the written half of the project. Open it in [Obsidian](https://obs
 ## Testing
 
 - [[Complete Testing Plan]] — the full engineering checklist before a release
-- [[Complete Testing Plan — v1.0]] — the filled-in run for v1.0, and the seven defects it found
+- [[Complete Testing Plan — v1.0]] — the filled-in run for v1.0, and the eleven defects it found
 - [[Customer Testing Plan]] — the session script for real students and staff
 
 ## Process
@@ -78,7 +79,7 @@ This vault is the written half of the project. Open it in [Obsidian](https://obs
 | Frontend | React 19 + Vite + Tailwind v4, 6 screens |
 | Skill ontology | 170 skills across 10 categories |
 | Job corpus | 26 seed postings across 13 role families |
-| Automated tests | 200 tests, including architecture, layout-geometry and privacy invariants, plus a live end-to-end check |
+| Automated tests | 416 tests, including architecture, layout-geometry and privacy invariants, plus a live end-to-end check and a browser check across three engines |
 | Optional components | Sentence embeddings, trained role classifier — both degrade cleanly |
 
 > [!warning] Degraded mode is a real state, not a bug
