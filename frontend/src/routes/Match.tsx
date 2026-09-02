@@ -36,7 +36,12 @@ export function MatchScreen() {
   const [jobTitle, setJobTitle] = useState("");
   const [result, setResult] = useState<MatchResponse | null>(null);
 
-  const { data: resume, isLoading } = useQuery({
+  const {
+    data: resume,
+    isLoading,
+    error: resumeError,
+    refetch: refetchResume,
+  } = useQuery({
     queryKey: ["resume", id],
     queryFn: () => getResume(id),
     enabled: Boolean(id),
@@ -62,6 +67,24 @@ export function MatchScreen() {
   });
 
   if (isLoading) return <Spinner label="Loading the resume" />;
+
+  // This query's error used to be dropped on the floor: only `data` and
+  // `isLoading` were read, so a resume that no longer exists rendered the full
+  // form. A student could paste an entire job description, press Score this
+  // match, and only then be told the resume was gone - having lost the paste.
+  // Report and Openings both guard here; this screen is the one that did not.
+  if (resumeError || !resume) {
+    return (
+      <ErrorBanner
+        message={
+          resumeError instanceof Error
+            ? resumeError.message
+            : "That resume could not be loaded."
+        }
+        onRetry={() => void refetchResume()}
+      />
+    );
+  }
 
   const tooShort = jobText.trim().length < MIN_LENGTH;
 

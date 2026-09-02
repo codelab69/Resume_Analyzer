@@ -223,6 +223,15 @@ For each of 15 resumes, record whether each field was extracted correctly:
 
 ## 6. Frontend
 
+> [!tip] Most of this section is a command now
+> `python scripts/check_frontend.py` runs the screens, behaviour, theme, motion and
+> accessibility rows in a real browser; `--browser firefox|webkit` covers §6.5 and
+> `--mobile` covers the two phone rows. It needs `pip install playwright` and
+> `playwright install chromium firefox webkit` — a development tool, deliberately not in
+> `requirements.txt`. What it cannot do is Lighthouse, which is Chrome-only, and a real
+> OS-level drag from a file manager. Everything else below has been measured by it at
+> least once; see [[Complete Testing Plan — v1.0#6. Frontend]].
+
 ### 6.1 Screens
 
 | Screen | Loads | Empty state | Error state | Mobile |

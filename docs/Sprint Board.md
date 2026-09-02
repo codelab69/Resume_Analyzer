@@ -51,7 +51,7 @@ same bar every time.
 | [[#Sprint 4 — Algorithm notes]] | Every algorithm written up for the viva | **Complete** — 9 notes, 13 defects, 2026-08-29 |
 | [[#Sprint 5 — Guides and reference]] | A stranger can set it up unaided | **Complete** — 7 stories, 4 defects, 2026-09-01 |
 | [[#Sprint 6 — Maintenance tooling]] | The data files can be grown safely | **Complete** — 4 stories, 8 defects, 2026-09-01 |
-| [[#Sprint 7 — Release hardening]] | Demo-day proof | **In progress** — S7.1 and S7.3 done, 7 defects; S7.2, S7.4, S7.5, S7.6 and S7.1f open |
+| [[#Sprint 7 — Release hardening]] | Demo-day proof | **In progress** — S7.1 and S7.3 done, 12 defects; S7.2, S7.4, S7.5, S7.6, S7.1f and S7.1l open |
 
 ---
 
@@ -69,9 +69,10 @@ that say otherwise in their own right-hand column:
 | `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, `role_classifier: trained, 13 labels`, notes empty. Also checked degraded: **`status: degraded`**, `hashing`, one note naming the reason; and with the artifact moved aside: `role_classifier: profile, 13 roles` | 2026-09-02 |
 | `npm run typecheck` and `npm run build` | `tsc --noEmit` clean; build clean, no chunk-size warning, 1052 modules, 7.0 s, largest chunk `charts` 368.45 kB (108.04 kB gzipped). All four vendor chunks split as intended | 2026-09-02 |
 | All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 29/29 | 2026-08-27, not re-run since |
-| Vault link integrity | **487 links checked in 24 notes: 487 resolve, 0 point at a note that does not exist, 0 broken anchors, 0 wrapped across a line.** This figure now comes from `scripts/check_vault_links.py` rather than from counting by hand — see S7.1h, and all four of its checks were proved by breaking one of each and watching it fail. Not directly comparable with the 476/472 of 2026-09-01: the script excludes inline code, so the four literal `[[link]]` examples that used to be counted-but-unresolved are now not counted at all, and one note has been added since | 2026-09-02 |
-| [[Complete Testing Plan]], sections a machine can run | **§0, §1, §2, §4, §5, §7, §8, §9 green**; §2 has one open item, S7.1f. §3, §6 and §10-11 **were not run** and are not ticked anywhere - they need consented resumes, a browser and a deployment. Full record in [[Complete Testing Plan — v1.0]] | 2026-09-02 |
-| Performance, on the machine that will run the demo | Cold start **9.0-14.3 s** transformer / **2.2-4.0 s** hashing, spread over five and three starts on a laptop that was doing other things; upload+analyse **54.9 ms**, cached **5.1 ms**, match **178.8 ms**, recommendations **62.4 ms** - every row inside its target, medians of five. Ten consecutive uploads showed no drift (first-five median 48 ms, last-five 48 ms). The embedding model loaded **once** across **207** requests in one process. Frontend first contentful paint not measured: it needs a browser | 2026-09-02 |
+| Vault link integrity | **489 links checked in 24 notes: 489 resolve, 0 point at a note that does not exist, 0 broken anchors, 0 wrapped across a line.** This figure now comes from `scripts/check_vault_links.py` rather than from counting by hand — see S7.1h, and all four of its checks were proved by breaking one of each and watching it fail. Not directly comparable with the 476/472 of 2026-09-01: the script excludes inline code, so the four literal `[[link]]` examples that used to be counted-but-unresolved are now not counted at all, and one note has been added since | 2026-09-02 |
+| [[Complete Testing Plan]], sections a machine can run | **§0, §1, §2, §4, §5, §6, §7, §8, §9 green.** §2 and §6 each carry one open decision, S7.1f and S7.1l. **§3, §10 and §11 were not run** and are not ticked anywhere - they need consented resumes, a deployment and an audience. Full record in [[Complete Testing Plan — v1.0]] | 2026-09-02 |
+| [[Complete Testing Plan]] §6, in real browsers | **Chromium 69/69, Firefox 67/67, WebKit 66/66**, plus Pixel 7 and iPhone 14 device profiles. Contrast measured over **163 text/background pairs per theme**: lowest 4.57 light, 4.82 dark - both were failing before S7.1j and S7.1k, dark at **1.12**. Every screen at 360, 390 and 412 px reports `scrollWidth == clientWidth`. WebKit skips the 8 links when tabbing, which is Safari's default rather than a defect - see S7.1m. Lighthouse not run: Chrome-only tool, not installed | 2026-09-02 |
+| Performance, on the machine that will run the demo | Cold start **9.0-14.3 s** transformer / **2.2-4.0 s** hashing, spread over five and three starts on a laptop that was doing other things; upload+analyse **54.9 ms**, cached **5.1 ms**, match **178.8 ms**, recommendations **62.4 ms** - every row inside its target, medians of five. Ten consecutive uploads showed no drift (first-five median 48 ms, last-five 48 ms). The embedding model loaded **once** across **207** requests in one process. Frontend first contentful paint **604 ms** on the production build (520-676, n=5), against a 2 s target - and **192 ms** with the Google Fonts CDN blocked, which is the number that matters for a rehearsal with the network off | 2026-09-02 |
 
 The right-hand column exists because two of these rows — the importer round trip and the
 clean-venv run — were not re-run today, and saying so is cheaper than a reader assuming
@@ -86,11 +87,11 @@ The e2e figure in this table used to read 30; it had never been true — see S4.
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Forty-four defects have been found by verifying rather than by looking
+> [!note] Forty-eight defects have been found by verifying rather than by looking
 > S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a-c, S4.5a-c, S4.6a-c, S4.7a-d,
-> S4.8a-c, S4.9a, S4.9b, S5.2a, S5.3a, S5.4a, S5.4b, S6.2a-c, S6.3a-d, S6.4a and S7.1a-g were all found by *running* the thing being
+> S4.8a-c, S4.9a, S4.9b, S5.2a, S5.3a, S5.4a, S5.4b, S6.2a-c, S6.3a-d, S6.4a and S7.1a-l were all found by *running* the thing being
 > documented instead of trusting an existing comment or a remembered number. None of them would have
-> been caught by reading the code. Thirty-three were invisible to a green test suite, two of them
+> been caught by reading the code. Thirty-seven were invisible to a green test suite, two of them
 > on fixtures that could not have failed, and one — S4.2a — was invisible *because* the
 > code read like a correct implementation: clear docstring, named constants, a comment marking the
 > important line, all of it describing an intention rather than the behaviour. That is the
@@ -143,6 +144,10 @@ The e2e figure in this table used to read 30; it had never been true — see S4.
 > | S7.1d — the testing plan claimed resumes are stored on disk | listing `storage/` while running the plan's own security section | Only by checking; S3.4a fixed three files and missed this one |
 > | S7.1e — a degraded-mode row tested a precondition producing the opposite behaviour | moving the artifact aside and reading the output instead of the row | No - it is a claim in prose about a mode nobody starts the server in |
 > | S7.1g — the first pytest run of a session errors on eleven tests | not re-running immediately, and reading the traceback | No - it is not in the code at all |
+> | S7.1i — the Match screen rendered its form for a resume that does not exist | opening `/match/<dead id>` in a browser | Possibly - `const { data, isLoading }` is a destructure that omits something, which is hard to see |
+> | S7.1j — a browser default made every dark-mode highlight white-on-yellow | looking at the dark theme, then measuring the pair | No - the rule sets a background *image*, and nothing in it mentions the colour underneath |
+> | S7.1k — the muted text token was 0.14 short of WCAG AA | computing the ratio instead of trusting that it looked fine | No - 4.36 and 4.50 are indistinguishable by eye |
+> | S7.1l — the skill chips are 23.5 px, half a pixel under the tap-target minimum | measuring on a phone profile rather than a narrow window | No |
 >
 > S4.3b, S4.4c, S4.5c, S6.3d, S7.1d and S7.1e are one defect six times, in six costumes: a
 > count in the README, a count in eleven vault files, four examples in docstrings, a
@@ -161,6 +166,14 @@ The e2e figure in this table used to read 30; it had never been true — see S4.
 > 28 out of 100 for a file nobody can read, "Jose Alvarez" for a person called José Álvarez
 > Muñoz. A blank field gets questioned. A confident wrong answer gets believed, and both of
 > these were shown to the student as the finished product.
+>
+> S7.1j belongs to a third category the board had not met before: **a defect nobody wrote**.
+> `.mark` is correct CSS, `--color-marker-soft` is a correctly chosen dark-mode token, and
+> the comment above them predicts the exact failure and explains how it was avoided. The
+> yellow came from the user agent's own stylesheet, underneath all of it. Reviewing the
+> diff that introduced this would have found nothing, because the wrong line is not in the
+> repository — it is a default that the repository never overrode. The only thing that
+> catches that is opening the page in the theme nobody develops in.
 
 ---
 
@@ -1870,7 +1883,7 @@ was rejected and why, and the worked numbers for one real example.
 
 - [x] **S7.1h — `scripts/check_vault_links.py`** *(unplanned)*
   **AC:** the link-integrity figure in "Last verified" comes from a command.
-  **Evidence:** **487 links checked in 24 notes: 487 resolve, 0 missing notes, 0 broken
+  **Evidence:** **489 links checked in 24 notes: 489 resolve, 0 missing notes, 0 broken
   anchors, 0 wrapped across a line.** All four checks were proved by breaking one of each
   and watching it fail, then restoring. Exits non-zero, so it gates.
   Two things the hand count got wrong and this does not: `[[#Anchor]]` links to a heading in
@@ -1880,6 +1893,67 @@ was rejected and why, and the worked numbers for one real example.
   why 487/487 is not the same measurement as 476/472 and the table says so.
   *That figure had been produced by hand four times. Adding one note to the vault is what
   made the fifth time worth automating rather than repeating.*
+
+- [x] **S7.1i — Defect: the Match screen swallowed its own resume query's error** *(unplanned, Minor)*
+  **Cause:** `Match.tsx` read `data` and `isLoading` off its `useQuery` and never `error`.
+  Report and Openings both guard on it; this screen did not. So a resume that no longer
+  exists rendered the **whole form**: two fields, an enabled button, no warning. A student
+  could paste an entire job posting, press *Score this match*, and be told only then that
+  the resume was gone — having lost the paste.
+  **Fix:** the same `ErrorBanner` and `onRetry` the other two screens use.
+  **Evidence:** `/match/deadbeef` now shows "That resume could not be found. Upload it
+  again." where it used to show the form. §6.1's Error-state column for Match had been
+  empty since the plan was written, and nobody had opened the URL.
+
+- [x] **S7.1j — Defect: `<mark>`'s user-agent yellow made dark mode unreadable** *(unplanned, Major)*
+  **Cause:** `.mark` sets `background-image` — the highlighter gradient — and never
+  `background-color`. `<mark>` carries a UA `background-color: yellow`, the gradient is
+  transparent outside its 52–94% band, and so **pure `rgb(255,255,0)` painted through** on
+  every highlighted skill. In dark mode the ink is `#e9ebe3`: measured **1.12:1**, on 25
+  highlights per report. White on yellow.
+  The token above it was already right — `--color-marker-soft` is a dark olive under
+  `.dark` precisely so the swipe survives a dark ground, and the file's own comment says
+  *"a naive inversion makes the marker yellow unreadable"*. The author saw the failure
+  coming and a browser default underneath defeated the arrangement anyway.
+  **Fix:** one line, `background-color: transparent`.
+  **Evidence:** screenshots before and after, both themes. Dark went 1.12 → **4.82** worst
+  pair. Light was never unreadable — dark ink survives a yellow ground — but it was never
+  *right* either: both themes had been rendering a solid yellow box, which is exactly the
+  "coloured box" the rule's comment exists to avoid. The intended marker stroke had never
+  once been on screen.
+
+- [x] **S7.1k — Defect: `--color-muted` was under WCAG AA in the light theme** *(unplanned, Minor)*
+  **Cause:** `#6c7167` measured **4.36:1** on paper and **4.00:1** on surface-2, against
+  the 4.5 the AA body-text criterion asks for — across 23 places, all of them real prose:
+  every eyebrow label, the role explanation, the footer.
+  **Fix:** darkened to `#63685f`, hue held, until the worst ground clears.
+  **Evidence:** light theme's lowest pair went 4.00 → **4.57** over 163 measured pairs.
+  Dark's muted token was already fine and is untouched.
+
+- [ ] **S7.1l — Open: the skill chips are half a pixel under the WCAG minimum tap target** *(unplanned, Minor)*
+  **AC:** either the chips reach 24 × 24 CSS px, or the decision not to is recorded.
+  Measured on a Pixel 7 and an iPhone 14 profile: all 19 chips are exactly **23.50 px**
+  tall (13 px text, 19.5 px line-height, 2 px padding each side). WCAG 2.2 SC 2.5.8 at AA
+  asks for 24 × 24. `py-0.5` → `py-1` in `Report.tsx` takes them to 27.5 px.
+  *Not fixed here on purpose. Tap-target size is not a row in [[Complete Testing Plan]],
+  the change is visible on every report, and half a pixel is close enough to the line that
+  it is a design call rather than a defect fix. It is the control a student taps most on a
+  phone, though, which is the argument for making it.*
+
+- [x] **S7.1m — §6 of the plan is no longer unrunnable** *(unplanned)*
+  **AC:** the frontend rows are measured rather than reasoned about.
+  **Evidence:** Playwright, installed into the backend venv as a dev-only dependency —
+  nothing in `requirements.txt`, nothing shipped. **Chromium 69/69, Firefox 67/67,
+  WebKit 66/66**, plus Pixel 7 and iPhone 14 device profiles. Four defects, S7.1i–l.
+  Three things the harness got wrong before the app did, each fixed and worth naming:
+  a colour parser that read Tailwind's `oklab()` as RGB and reported the site header at
+  1.20:1; a reduce-motion check demanding an exact `0s` when `0.01ms` is the correct
+  implementation (a true zero stops `transitionend` firing); and a Tab loop that stopped
+  after *N* presses when the count included duplicates, so it declared an element
+  unreachable that it had simply not got to yet.
+  *A measurement that disagrees with the thing it measures is wrong until proved
+  otherwise. Two of the four real defects were found only after the harness stopped
+  producing false ones.*
 
 - [ ] **S7.2 — Run [[Customer Testing Plan]] with at least five real students**
   *Also unblocks §3 of the testing plan, which is the parser accuracy figure the project

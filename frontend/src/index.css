@@ -28,7 +28,13 @@
   --color-surface-2: #e4e7df;
   --color-ink: #181a16;
   --color-ink-soft: #3d4139;
-  --color-muted: #6c7167;
+  /*
+    #6c7167 measured 4.36:1 on paper and 4.00:1 on surface-2 - under the 4.5
+    WCAG AA needs for body text, on the twenty-three places this token is used
+    for real prose: every eyebrow label, the role explanation, the footer.
+    Darkened until the worst ground clears the bar, hue held.
+  */
+  --color-muted: #63685f;
   --color-rule: #d2d6cb;
   --color-rule-strong: #b3b9aa;
 
@@ -117,6 +123,21 @@
     idea of the product.
   */
   .mark {
+    /*
+      <mark> carries a user-agent `background-color: yellow`, and nothing here
+      overrode it. The gradient below paints *over* that colour but is
+      transparent outside the 52-94% band, so the browser's yellow filled the
+      rest and every highlight rendered as a solid yellow box - the coloured
+      box this rule exists to avoid, in both themes.
+
+      In light mode the ink is dark enough that a yellow ground stays legible,
+      so it looked merely wrong. In dark mode the ink is #e9ebe3 and the pair
+      measured **1.12:1** - white on pure yellow, 25 highlights per report,
+      unreadable. The token above it was already correct: --color-marker-soft
+      is a dark olive in .dark precisely so the swipe works on a dark ground.
+      A user-agent default underneath it defeated the whole arrangement.
+    */
+    background-color: transparent;
     background-image: linear-gradient(
       transparent 52%,
       var(--color-marker-soft) 52%,

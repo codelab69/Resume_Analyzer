@@ -292,7 +292,7 @@ backend/
   data/           skills, headings, action verbs, job corpus — all JSON/text
   scripts/        smoke_test.py, e2e_check.py, validate_skills.py,
                   train_classifier.py, import_jobs.py, tune_weights.py,
-                  check_vault_links.py
+                  check_vault_links.py, check_frontend.py
   artifacts/      generated models — not in git, see below
   tests/          416 tests plus fixtures
 frontend/
@@ -318,6 +318,12 @@ cd backend
 pytest -q                        # 416 unit and integration tests, and rising
 python scripts/smoke_test.py     # the pipeline, no server
 python scripts/e2e_check.py      # real HTTP against a running server
+
+# The frontend, in a real browser. Needs `pip install playwright` and
+# `playwright install chromium firefox webkit` - a dev tool, not a dependency.
+python scripts/check_frontend.py                   # every §6 check, chromium
+python scripts/check_frontend.py --browser webkit  # Safari's engine
+python scripts/check_frontend.py --mobile          # Pixel 7 and iPhone 14
 
 cd ../frontend
 npm run typecheck

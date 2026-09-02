@@ -29,14 +29,14 @@ stays unticked; this is the run.
 | 3. Extraction accuracy | **Not run** | no consented resume set exists — S7.2 |
 | 4. Scoring correctness | **Pass** | 30 checks over real HTTP, after defects 1 and 3 |
 | 5. API contract | **Pass** | 42 checks, every endpoint against its own schema |
-| 6. Frontend | **Partial** | source-level rows verified; every browser row not run |
+| 6. Frontend | **Pass, 1 open** | Chromium 69/69, Firefox 67/67, WebKit 66/66, 2 device profiles; S7.1l open |
 | 7. Performance | **Pass** | every row inside target, no drift over ten uploads |
 | 8. Data and security | **Pass** | 12 checks |
-| 9. Degraded mode | **Pass** | API half green; two frontend rows not run |
+| 9. Degraded mode | **Pass** | API and frontend halves both green |
 | 10. Deployment | **Not run** | nothing is deployed — S7.4 |
 | 11. Demo rehearsal | **Not run** | S7.5 |
 
-**Seven defects found. Five fixed, one accepted, one open and needing a decision.**
+**Eleven defects found. Eight fixed, one accepted, two open and needing a decision.**
 
 ---
 
@@ -263,43 +263,115 @@ OpenAPI model rather than against what it was expected to return.
 
 ## 6. Frontend
 
-### 6.1 Screens — **not run**
+Driven in a real browser by `scripts/check_frontend.py`, against `npm run dev` on
+:5173 and the live API. **Chromium 69/69, Firefox 67/67, WebKit 66/66**, plus a Pixel 7 and an
+iPhone 14 device profile. The app carries no `data-testid`, so every element below
+was found by role, accessible name or visible text — which means the accessibility
+layer had to work before any of these checks could run at all.
 
-Every cell in the screens table needs a browser. Not ticked.
+Four defects, three fixed. They are S7.1i–l on the board.
 
-### 6.2 Behaviour — **not run**
+### 6.1 Screens
 
-Every row needs a browser. The source-level facts each row depends on were checked and are
-recorded here as *preconditions*, not as passes:
+| Screen | Loads | Empty state | Error state | Mobile (360 px) |
+|---|---|---|---|---|
+| Landing | ☑ | n/a | n/a | ☑ |
+| Upload | ☑ | ☑ dropzone | ☑ inline, no navigation | ☑ |
+| Report | ☑ | n/a | ☑ "could not be found" + Try again | ☑ |
+| Match | ☑ | ☑ "Paste a posting to score it" | ☑ **after S7.1i** — it had none | ☑ |
+| Openings | ☑ | ☑ "Nothing matches those filters" | ☑ | ☑ |
+| History | ☑ | ☑ | ☑ | ☑ |
 
-| Row | What the source shows |
-|---|---|
-| Job filters survive a refresh | `Jobs.tsx` holds them in `useSearchParams`, so they are in the URL |
-| Score gauge never overshoots 100 | `ScoreGauge.tsx:52` clamps with `Math.max(0, Math.min(100, value))`, with a comment naming the spring overshoot it exists to stop |
+Every screen renders exactly one `<h1>`, throws no page error, and at 360 px reports
+`scrollWidth == clientWidth` — no horizontal scroll anywhere, on any of the six.
 
-### 6.3 Themes and motion — **not run**
+### 6.2 Behaviour
 
-Preconditions: `theme.ts` resolves a stored choice before the OS preference and writes the
-class in `main.tsx` before React renders, which is the no-flash requirement; every
-`localStorage` access is wrapped for private browsing. Reduced motion is honoured twice —
-`useReducedMotion()` in `GapList` and `JobCard`, and a `@media (prefers-reduced-motion: reduce)`
-block in `index.css`. **None of that is a substitute for looking at it.**
+- [x] Drag and drop accepts a file — a real `DataTransfer` through `dragenter`/`dragover`/`drop`
+- [x] Click-to-browse accepts a file
+- [x] Dropping an unsupported type shows the inline error, not a browser download —
+      `[role=alert]` appears, the URL stays on `/upload`, and no `download` event fires
+- [x] The analysis stepper advances — stages **2 → 3 → 4 → 5** observed under CDP
+      throttling, monotonically. On localhost the whole upload is ~55 ms, so this row
+      cannot be seen at all without slowing the transport
+- [x] **and the final step waits for the real response** — the stepper stops at stage 5
+      of 5 and holds there until the API answers, which is what
+      `STAGES.slice(0, -1)` in `Upload.tsx` is for
+- [x] A failed upload stops the stepper — it never shows "done" after an error
+- [x] Skill highlights land on the right words — 25 `<mark>` elements, every API span
+      slices back to its own surface, and every marked string is one the API returned
+- [x] Clicking a skill chip isolates it; clearing the filter restores all highlights —
+      `aria-pressed` flips, "CLEAR FILTER (1)" appears and then goes
+- [x] Fuzzy matches are visibly distinguished — exercised with a deliberately misspelled
+      resume: `Pythonn`, `JavaScrpit`, `Dockr`, `Kubernets` came back as 4 fuzzy spans and
+      rendered as exactly 4 dotted underlines, each titled "…, fuzzy match", while
+      `Postgresql` beside them matched exactly and carries no dots
+- [x] ATS rules open by default when they lost points — 2 losing rules expanded, all 8
+      full-mark rules collapsed
+- [x] Job filters survive a page refresh — `?location=Bengaluru` in the URL, still
+      selected after reload
+- [x] A report URL can be pasted into a new tab and loads
+- [x] Deleting the active resume clears the scoped nav links —
+      `[Analyse, Report, Job match, Openings, History]` → `[Analyse, History]`
 
-### 6.4 Accessibility — **partly verified in source, not run in a browser**
+### 6.3 Themes and motion
 
-- [x] Sub-score bars expose `role="meter"` with `aria-valuenow/min/max` — `MatchBars.tsx:78–81`
-- [x] The score gauge has an accessible label reading the value — `role="img"`,
-      `aria-label="{label}: {score} out of 100"`
-- [x] Expandable rules and job cards set `aria-expanded` — `RuleList.tsx:52`, `JobCard.tsx:69`
-- [x] Each route renders exactly one `<h1>` and no component adds a second
-- [ ] Every interactive element reachable by <kbd>Tab</kbd> — *needs a browser*
-- [ ] Focus outline visible — `:focus-visible` is styled in `index.css:101`, *not looked at*
-- [ ] Colour is never the only signal — *needs a browser*
-- [ ] Lighthouse accessibility ≥ 90 — *needs a browser*
+- [x] Light theme: every text/background pair is readable — **163 pairs, lowest 4.57:1**
+- [x] Dark theme: every text/background pair is readable — **163 pairs, lowest 4.82:1**
+- [x] Theme choice survives a refresh
+- [x] No flash of the wrong theme on load — measured with the OS set to dark and
+      `main.tsx` held for 600 ms: the body never paints a light ground
+- [x] With OS reduce-motion on: nothing moves after first paint, no element sits at a
+      partial opacity, and every transition and animation is cut to 0.01 ms
+- [x] The score gauge never overshoots past 100 — sampled every 16 ms for 2.5 s, peak 95
 
-### 6.5 Browsers — **not run.** No row ticked.
+> [!warning] Both contrast rows failed before S7.1j and S7.1k
+> Dark theme's worst pair measured **1.12:1** and light theme had 23 pairs under AA.
+> Both were single-token causes and both are fixed; the numbers above are the re-run.
 
----
+### 6.4 Accessibility
+
+- [x] Every interactive element is reachable by <kbd>Tab</kbd> — 38 interactive elements,
+      all reached, tabbing until focus wrapped to the first
+- [x] Focus outline is visible on every focused element — 0 of 38 without an outline or ring
+- [x] The score gauge has an accessible label reading the value — `"Excellent: 95 out of 100"`
+- [x] Sub-score bars expose `role="meter"` with correct values — 4 meters, all with
+      `aria-valuenow` in range and min/max of 0/100
+- [x] Expandable rules and job cards set `aria-expanded` — 10 on Report, 12 on Openings
+- [x] Colour is never the only signal — every rule row carries its score as text as well
+      as a status stripe
+- [x] Page has one `h1` — on all six screens
+- [ ] Lighthouse accessibility score ≥ 90 — **not run.** Lighthouse is a Chrome-only tool
+      and is not installed here. The individual criteria it would report on are measured
+      above, one at a time, which is more use than a single number
+
+### 6.5 Browsers
+
+| Engine | Stands in for | Result |
+|---|---|---|
+| Chromium | Chrome desktop, Edge desktop | **69 passed, 0 failed** |
+| Firefox | Firefox desktop | **67 passed, 0 failed** |
+| WebKit | Safari desktop and iOS | **66 passed, 0 failed, 1 platform note** |
+| Pixel 7 (Chromium) | Chrome on Android | upload works, no horizontal scroll on any screen |
+| iPhone 14 (WebKit) | Safari on iOS | upload works, no horizontal scroll on any screen |
+
+- [x] 360 px wide viewport: no horizontal scroll anywhere — and 390 px and 412 px too,
+      on the real device profiles
+
+> [!note] WebKit does not put links in the tab order, and that is Safari, not this app
+> WebKit reached 30 of 38 interactive elements. The 8 it skipped are all `<a>`. Measured
+> directly: WebKit tabs the 30 buttons and none of the 8 anchors, Chromium tabs both.
+> That is Safari's default — "Press Tab to highlight each item on a webpage" is off unless
+> the user turns it on. Recorded as a platform note rather than a failure, because there is
+> nothing in this codebase that would change it.
+
+> [!warning] Open, and outside the plan's rows: the skill chips are 0.5 px under the WCAG minimum
+> On both device profiles the 19 skill chips measure exactly **23.50 × 50–72 CSS px**
+> (13 px text, 19.5 px line-height, 2 px padding top and bottom). WCAG 2.2 SC 2.5.8, at
+> AA, asks for 24 × 24. They miss by half a pixel, on the one control a student taps most
+> on a phone. `py-0.5` → `py-1` on the chip in `Report.tsx` takes them to 27.5 px.
+> Not fixed: touch-target sizing is not a row in this plan and the change is visible, so
+> it is a design call rather than a defect fix. Logged as **S7.1l**.
 
 ## 7. Performance
 
@@ -314,9 +386,9 @@ laptop and the worst case is what an audience sees.
 | Upload + analyse, cached (same file) | < 300 ms | **5.1 ms** (4.3–6.6) | ok |
 | Match against a job description | < 1.5 s | **178.8 ms** (173.2–220.4) | ok |
 | Recommendations, 26 postings | < 1 s | **62.4 ms** (61.7–67.4) | ok |
-| Frontend first contentful paint | < 2 s | — | **not run**, needs a browser |
+| Frontend first contentful paint | < 2 s | **604 ms** (520–676, n=5) | ok |
 
-- [x] Table filled in, except the row that needs a browser
+- [x] Table filled in
 - [x] Per-stage timings look sane — extract 6.2 ms (46%), entities 2.9, classify 1.8,
       skills 1.3, ats 1.0, segment 0.3. Nothing dominating unexpectedly; extract leading on
       a PDF is what it should be
@@ -324,6 +396,13 @@ laptop and the worst case is what an audience sees.
       `58 53 46 48 48 46 50 48 48 49` ms, first-five median 48, last-five median 48, ratio 1.00
 - [x] The embedding model loads exactly once per process — **one** `Loading SentenceTransformer
       model` line across **207** served requests in one process
+
+> [!note] Roughly 400 ms of that first paint is a font CDN, and the page does not need it
+> FCP is 604 ms with `fonts.googleapis.com` reachable and **192 ms with it blocked** — the
+> page still renders, on the fallback stack, with the `h1` intact. Worth knowing for §11's
+> network-disconnected rehearsal: the frontend survives it. Measured on `vite preview`
+> against `dist/`, not the dev server, because unbundled modules over HMR are not what a
+> visitor loads.
 
 ---
 
@@ -351,13 +430,14 @@ last two rows — a third with `artifacts/role_classifier.joblib` moved aside.
 - [x] Server still starts — 4.0 s
 - [x] `/api/health` reports `degraded` and names the reason — "Sentence embeddings are
       unavailable, so semantic matching is using word overlap"
-- [ ] The reduced-accuracy banner appears on every screen — *needs a browser.*
-      `Layout.tsx:107` renders it on `health?.status === "degraded"`, which is the right condition
+- [x] The reduced-accuracy banner appears on every screen — checked in the browser against
+      a server started with `USE_TRANSFORMER_EMBEDDINGS=false`: the banner renders on all
+      six screens and carries the health note verbatim
 - [x] Uploading still works and returns a full report — 201, 10 rules, 25 skills, ATS 95
 - [x] Matching still works and carries the word-overlap note — 39/100, note present
 - [x] Recommendations still return results — 10 jobs, top score 60
-- [ ] Every screen renders — *needs a browser.* All four sub-scores are present and numeric
-      in the API response, so nothing downstream has to cope with a missing semantic score
+- [x] Every screen renders — nothing assumes a semantic score is present; all six screens
+      load with one `h1` and no page error on the fallback backend
 - [x] With the artifact absent the classifier falls back to `profile` and **rule 7 scores
       normally** — 15/15 on the good resume, 1.88/15 on the weak one. See defect 5: this
       section used to claim rule 7 awards full points here, and it does not
@@ -388,16 +468,17 @@ row is blocked on S7.2 as well.
 
 ## Exit criteria
 
-- [ ] Sections 1, 4, 5 and 9 are fully ticked — **1, 4 and 5 are. §9 has two browser rows open.**
-- [ ] No open defect rated Blocker or Major — **met for now**: both Majors are fixed;
-      defect 6 is Minor and open
+- [x] Sections 1, 4, 5 and 9 are fully ticked
+- [x] No open defect rated Blocker or Major — all three Majors are fixed; the two open
+      items, S7.1f and S7.1l, are both Minor and both are decisions rather than bugs
 - [ ] Section 3 accuracy numbers are recorded — **no.** This is the gap that matters most
 - [ ] Section 7 performance table is filled in — every row but first contentful paint
 - [x] Every failure below has an owner and a decision
 
-**Not releasable yet.** Not because anything measured is wrong — everything measured is
-green — but because §3, §6, §10 and §11 have not been measured at all, and three of the
-five exit criteria depend on them.
+**Not releasable yet**, and for a shorter list than before. §6 has now been measured in
+three engines and two phones, so what is left is **§3** (no consented resumes), **§10**
+(nothing deployed) and **§11** (no rehearsal) — S7.2, S7.4 and S7.5. Everything a machine
+can check is green.
 
 ---
 
