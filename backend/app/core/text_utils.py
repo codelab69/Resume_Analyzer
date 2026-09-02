@@ -196,3 +196,20 @@ def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
 def pct(value: float) -> int:
     """Convert a 0..1 score to a rounded 0..100 integer for display."""
     return int(round(clamp(value) * 100))
+
+
+def plural(count: int, noun: str, plural_noun: str | None = None) -> str:
+    """A count and its noun, agreeing: '1 skill', '0 skills', '3 skills'.
+
+    Several user-facing strings interpolate a count straight into a plural
+    noun, which reads correctly only when the count happens not to be one.
+    "The resume shows 1 skills that this role's postings commonly ask for"
+    is the sort of sentence a student notices and a test never does, because
+    no assertion in the suite reads the sentence.
+
+    The rest of this codebase writes "phrase(s)" for the same problem. That
+    form is fine in a terse detail line and poor in a sentence written to be
+    read aloud, which the `fix` strings are.
+    """
+    word = noun if count == 1 else (plural_noun or noun + "s")
+    return f"{count} {word}"

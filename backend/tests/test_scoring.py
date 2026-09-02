@@ -14,7 +14,8 @@ from __future__ import annotations
 import pytest
 
 from app.config import settings
-from app.core import ats, extract, matcher, pipeline, recommend, segment, skills
+from app.core import ats, extract, matcher, pipeline, recommend, segment, skills, text_utils
+from app.core import entities as entities_mod
 
 
 @pytest.fixture(scope="module")
@@ -233,6 +234,91 @@ class TestKeywordRuleWithNothingToScore:
         analysis = pipeline.analyse(resume.encode("utf-8"), "noskills.txt")
         rule = next(r for r in analysis.ats_report.rules if r.id == "keywords")
         assert rule.earned == 0.0
+
+
+class TestUnreadableDocumentScoresNothing:
+    """S7.1a. A file with no text layer collected points for faults it could not commit.
+
+    Six of the ten rules score the *absence* of something. A document with no
+    text has no two-column layout, no cliches, no inconsistent dates and no
+    third page, so it passed all four: a 100x100 image renamed `.pdf` scored
+    **28 out of 100**, with "Single-column, parser-friendly layout" marked PASS
+    on a file containing zero characters. Every genuine scan scored the same
+    way, which is worse, because a scan is a resume somebody meant to submit.
+
+    Twenty-eight was not a miscalculation. It was the correct answer to "how
+    few faults can be found in a document nobody can read", which is not the
+    question the student asked.
+    """
+
+    @staticmethod
+    def _empty_document():
+        """What `extract` returns for a scan: a page, a reader, and no text."""
+        return extract.ExtractedDocument(
+            text="", page_count=1, file_type="pdf", reader="pymupdf",
+            has_text_layer=False,
+        )
+
+    def _report(self):
+        document = self._empty_document()
+        return ats.evaluate(
+            document=document,
+            segmented=segment.segment(document.text),
+            entities=entities_mod.extract_entities(document.text),
+            skill_hits=[],
+            action_verbs=set(),
+            role_keywords=None,
+        )
+
+    def test_the_total_is_zero_not_twenty_eight(self):
+        assert self._report().score == 0
+
+    def test_no_rule_awards_a_point_for_an_absent_fault(self):
+        for rule in self._report().rules:
+            assert rule.earned == 0.0, f"{rule.id} scored {rule.earned} on an empty document"
+            assert rule.status == "fail"
+
+    def test_every_rule_says_why_it_could_not_be_scored(self):
+        for rule in self._report().rules:
+            assert "no readable text" in rule.detail.lower()
+            assert rule.fix, f"{rule.id} has no fix"
+
+    def test_the_registry_still_totals_one_hundred_points(self):
+        # The rules still run - they are what supplies the ids, titles and
+        # points. Zeroing them must not quietly drop one.
+        report = self._report()
+        assert len(report.rules) == 10
+        assert sum(rule.points for rule in report.rules) == 100
+
+    def test_a_readable_resume_is_untouched_by_the_guard(self, strong):
+        assert strong.ats_report.score > 0
+        assert any(r.earned > 0 for r in strong.ats_report.rules)
+
+
+class TestCountsAgreeWithTheirNouns:
+    """S7.1c. "The resume shows 1 skills that this role's postings ask for."
+
+    Four user-facing strings interpolated a count straight into a plural noun,
+    so each read correctly except at the one value a student is most likely to
+    see it at. No assertion in the suite reads a sentence, so all four were
+    green.
+    """
+
+    def test_one_is_singular_and_everything_else_is_not(self):
+        assert text_utils.plural(0, "skill") == "0 skills"
+        assert text_utils.plural(1, "skill") == "1 skill"
+        assert text_utils.plural(2, "skill") == "2 skills"
+
+    def test_an_irregular_plural_can_be_given(self):
+        assert text_utils.plural(1, "entry", "entries") == "1 entry"
+        assert text_utils.plural(3, "entry", "entries") == "3 entries"
+
+    def test_rule_seven_does_not_say_one_skills(self):
+        hit = skills.find_skills("Python")[0]
+        result = ats.rule_keywords(skill_hits=[hit], role_keywords={"Python", "SQL", "Django"})
+        assert "1 skills" not in result.fix
+        assert "1 skill " in result.fix or "1 skill." in result.fix
+        assert "1 role-relevant skills" not in result.detail
 
 
 class TestToneRule:

@@ -111,7 +111,11 @@ Assemble a folder of at least 15 real resumes before this section — collected 
 - [ ] `.txt` file
 - [ ] Scanned / image-only PDF → **must be rejected with the "this is a scan" message**, not silently scored 0
 - [ ] Password-protected PDF → clear error, no stack trace
-- [ ] Corrupt file (rename a `.png` to `.pdf`) → clear error
+- [ ] Corrupt file (rename a `.png` to `.pdf`) → clear error. **This row is disputed —
+      see S7.1f.** PyMuPDF opens an image as a one-page document, so the file currently
+      takes the scanned-PDF path: 201, score 0, and "most likely a scan or an exported
+      image… Re-export the resume as a text PDF". Decide whether that is the clear error
+      this row wants before ticking or failing it
 - [ ] `.doc` renamed to `.docx` → clear error naming the real problem
 
 ### 2.2 Layouts
@@ -300,7 +304,13 @@ Measure on the machine that will run the demo, not a faster one.
 
 ## 8. Data and security
 
-- [ ] Uploaded files are stored under `backend/storage/` and that path is git-ignored
+- [ ] No uploaded file is written to disk anywhere — the bytes are read, analysed and
+      dropped, and only the extracted text is persisted, in `backend/storage/app.db`.
+      Check by listing `backend/storage/` after an upload: `app.db` and nothing else.
+      This row used to read *"uploaded files are stored under `backend/storage/`"*,
+      which was the claim S3.4a removed from `config.py` and the README and left
+      standing here — a false statement about other people's personal data, in the
+      section of the plan a reviewer reads to check exactly that
 - [ ] `storage/` and `.env` do not appear in `git status`
 - [ ] No API key, password or personal data is committed anywhere
 - [ ] Test fixtures contain no real personal data — names, emails and phone numbers are invented
@@ -323,7 +333,16 @@ Run this whole section with `USE_TRANSFORMER_EMBEDDINGS=false` to force the fall
 - [ ] Matching still works and the response carries the word-overlap note
 - [ ] Recommendations still return results
 - [ ] Every screen renders — nothing assumes a semantic score is present
-- [ ] With `artifacts/role_classifier.joblib` absent, ATS rule 7 awards full points and says why
+- [ ] With `artifacts/role_classifier.joblib` absent, the classifier falls back to the
+      `profile` backend, `/api/health` reports `role_classifier: profile, 13 roles`, and
+      ATS rule 7 scores **normally** — the fallback still supplies role keywords, so
+      nothing is skipped and no free points are awarded. Record the predicted role: the
+      two backends disagree (measured 2026-09-02, `trained` said Backend Developer at
+      0.10 confidence and `profile` said Full Stack Developer at 0.67 on the same resume)
+- [ ] Rule 7's "award full points and say why" branch fires only when the classifier
+      cannot run **at all** and `role_keywords` is empty — a different condition from a
+      missing artifact, and the one this section used to name. Cover it with
+      `pytest -k TestKeywordRuleWithNothingToScore`, not by deleting the artifact
 
 ---
 

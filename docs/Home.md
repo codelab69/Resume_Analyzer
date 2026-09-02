@@ -55,6 +55,7 @@ This vault is the written half of the project. Open it in [Obsidian](https://obs
 ## Testing
 
 - [[Complete Testing Plan]] — the full engineering checklist before a release
+- [[Complete Testing Plan — v1.0]] — the filled-in run for v1.0, and the seven defects it found
 - [[Customer Testing Plan]] — the session script for real students and staff
 
 ## Process

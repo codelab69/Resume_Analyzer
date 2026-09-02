@@ -51,30 +51,32 @@ same bar every time.
 | [[#Sprint 4 — Algorithm notes]] | Every algorithm written up for the viva | **Complete** — 9 notes, 13 defects, 2026-08-29 |
 | [[#Sprint 5 — Guides and reference]] | A stranger can set it up unaided | **Complete** — 7 stories, 4 defects, 2026-09-01 |
 | [[#Sprint 6 — Maintenance tooling]] | The data files can be grown safely | **Complete** — 4 stories, 8 defects, 2026-09-01 |
-| [[#Sprint 7 — Release hardening]] | Demo-day proof | Not started — 6 items, S7.6 opened by S5.6b |
+| [[#Sprint 7 — Release hardening]] | Demo-day proof | **In progress** — S7.1 and S7.3 done, 7 defects; S7.2, S7.4, S7.5, S7.6 and S7.1f open |
 
 ---
 
 ## Last verified
 
-Everything ticked above was green at the same moment, on 2026-09-01 — except the rows
+Everything ticked above was green at the same moment, on 2026-09-02 — except the rows
 that say otherwise in their own right-hand column:
 
 | Check | Result | Measured |
 |---|---|---|
-| `pytest` | **400 passed** in 10.5 s (120 at the start of Sprint 1, 322 before S6.2, 343 before S6.3, 374 before S5.4, 379 before S5.5, 382 before S6.4). Green on four consecutive runs, including after clearing every `__pycache__` and `.pytest_cache` — but **not** on the first run of the session, which gave `363 passed, 11 errors` and has not been reproduced since. See the note under S5.4 | 2026-09-01 |
-| `scripts/smoke_test.py` | passed, TOTAL **11.1 ms** warm on the transformer backend (extract 0.2, segment 1.0, entities 6.2, skills 1.1, classify 1.7, ats 0.9). An earlier run the same day gave 5.3 ms with the same shape, which is worth knowing: these are timings on a shared laptop, not a benchmark, and only an order-of-magnitude change means anything. Not comparable with the 201 ms recorded on 2026-08-29: that run was cold, and after S6.2c the script warms up before it times anything, because a cold `classify` stage was printing 2062.6 ms of scikit-learn import as if it were the cost of classifying | 2026-09-01 |
+| `pytest` | **416 passed** in 6.5 s (120 at the start of Sprint 1, 322 before S6.2, 343 before S6.3, 374 before S5.4, 379 before S5.5, 382 before S6.4, 400 before S7.1). The +16 are S7.1a-c's tests. The **first two runs of the session** gave `389 passed, 11 errors` and the third onward gave 400 - the anomaly first seen on 2026-09-01, now reproduced and explained: Windows Application Control blocks scipy's compiled extensions until it has evaluated them. See S7.1g and [[Troubleshooting#The first pytest run of a session reports eleven errors]]. Run it twice on a fresh machine | 2026-09-02 |
+| `scripts/smoke_test.py` | passed, TOTAL **11.7 ms** warm on the transformer backend (extract 0.2, segment 1.1, entities 6.2, skills 1.2, classify 1.9, ats 1.1). Within noise of the 11.1 ms measured on 2026-09-01; these are timings on a shared laptop, not a benchmark, and only an order-of-magnitude change means anything. Not comparable with the 201 ms of 2026-08-29: that run was cold, and since S6.2c the script warms up before it times anything | 2026-09-02 |
 | `scripts/import_jobs.py`, round trip | the shipped 26 postings exported to CSV and imported back: **26 read, 26 accepted, 0 rejected, every field identical** through `load_jobs`. The written file spells out `"url": null`, which the hand-written corpus omits; nothing else differs | 2026-08-31, not re-run since |
-| `scripts/e2e_check.py` against live uvicorn | **all 29 checks passed on the transformer backend**, with a trained classifier on disk, **and 29/29 again with the transformer forced off**. Run both ways every time now: S5.4 is a note about the degraded path, and running it once on the good backend would not have tested that claim | 2026-09-01 |
-| `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, `role_classifier: trained, 13 labels`, notes empty | 2026-09-01 |
-| `npm run build` | clean, no warnings, 1052 modules, largest chunk `charts` 368 kB, 3.5 s | 2026-08-29, not re-run since |
+| `scripts/e2e_check.py` against live uvicorn | **29/29 on the transformer backend** with a trained classifier on disk, **and 29/29 with the transformer forced off**, against two servers on two ports. Run both ways every time: S5.4 is a note about the degraded path, and running it once on the good backend would not have tested that claim | 2026-09-02 |
+| `GET /api/health` | **`status: ok`**, `semantic_backend: transformer`, `role_classifier: trained, 13 labels`, notes empty. Also checked degraded: **`status: degraded`**, `hashing`, one note naming the reason; and with the artifact moved aside: `role_classifier: profile, 13 roles` | 2026-09-02 |
+| `npm run typecheck` and `npm run build` | `tsc --noEmit` clean; build clean, no chunk-size warning, 1052 modules, 7.0 s, largest chunk `charts` 368.45 kB (108.04 kB gzipped). All four vendor chunks split as intended | 2026-09-02 |
 | All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 29/29 | 2026-08-27, not re-run since |
-| Vault link integrity | **476 links checked: 472 resolve, 0 point at notes still on this board, 0 broken anchors, 0 wrapped across a line.** The four that do not resolve are the literal `[[link]]` three notes use as an example of the syntax. Zero for the first time, down from 16 on 2026-08-31: [[Troubleshooting]] and [[Glossary]] now exist, and with them `Home`'s `[[Troubleshooting#The reduced accuracy banner is showing]]`, an anchor the vault had been promising for a week, which is why that note has a section under exactly that name. The wrapped-link check exists because S6.2 wrote one: a wikilink split over two lines, which Obsidian does not match — the same failure mode as the `not yet written` marker in S5.2a. The 2026-08-27 run checked 237 | 2026-09-01 |
+| Vault link integrity | **487 links checked in 24 notes: 487 resolve, 0 point at a note that does not exist, 0 broken anchors, 0 wrapped across a line.** This figure now comes from `scripts/check_vault_links.py` rather than from counting by hand — see S7.1h, and all four of its checks were proved by breaking one of each and watching it fail. Not directly comparable with the 476/472 of 2026-09-01: the script excludes inline code, so the four literal `[[link]]` examples that used to be counted-but-unresolved are now not counted at all, and one note has been added since | 2026-09-02 |
+| [[Complete Testing Plan]], sections a machine can run | **§0, §1, §2, §4, §5, §7, §8, §9 green**; §2 has one open item, S7.1f. §3, §6 and §10-11 **were not run** and are not ticked anywhere - they need consented resumes, a browser and a deployment. Full record in [[Complete Testing Plan — v1.0]] | 2026-09-02 |
+| Performance, on the machine that will run the demo | Cold start **9.0-14.3 s** transformer / **2.2-4.0 s** hashing, spread over five and three starts on a laptop that was doing other things; upload+analyse **54.9 ms**, cached **5.1 ms**, match **178.8 ms**, recommendations **62.4 ms** - every row inside its target, medians of five. Ten consecutive uploads showed no drift (first-five median 48 ms, last-five 48 ms). The embedding model loaded **once** across **207** requests in one process. Frontend first contentful paint not measured: it needs a browser | 2026-09-02 |
 
-The right-hand column exists because three of these rows — `npm run build`, the importer
-round trip and the clean-venv
-run — were not re-run today, and saying so is cheaper than a reader assuming they were. The
-e2e figure in this table used to read 30; it had never been true — see S4.4c.
+The right-hand column exists because two of these rows — the importer round trip and the
+clean-venv run — were not re-run today, and saying so is cheaper than a reader assuming
+they were. `npm run build` had carried that caveat since 2026-08-29 and no longer does.
+The e2e figure in this table used to read 30; it had never been true — see S4.4c.
 
 > [!important] The headline change on 2026-08-27
 > The semantic path is live. `/api/health` reports `ok` rather than `degraded` for the
@@ -84,11 +86,11 @@ e2e figure in this table used to read 30; it had never been true — see S4.4c.
 > Getting there turned up one defect, S2.3a, which was invisible on a machine with
 > working wi-fi.
 
-> [!note] Thirty-seven defects have been found by verifying rather than by looking
+> [!note] Forty-four defects have been found by verifying rather than by looking
 > S1.2a, S2.3a, S2.5a, S3.4a, S4.2a, S4.3a, S4.3b, S4.4a-c, S4.5a-c, S4.6a-c, S4.7a-d,
-> S4.8a-c, S4.9a, S4.9b, S5.2a, S5.3a, S5.4a, S5.4b, S6.2a-c, S6.3a-d and S6.4a were all found by *running* the thing being
+> S4.8a-c, S4.9a, S4.9b, S5.2a, S5.3a, S5.4a, S5.4b, S6.2a-c, S6.3a-d, S6.4a and S7.1a-g were all found by *running* the thing being
 > documented instead of trusting an existing comment or a remembered number. None of them would have
-> been caught by reading the code. Twenty-seven were invisible to a green test suite, two of them
+> been caught by reading the code. Thirty-three were invisible to a green test suite, two of them
 > on fixtures that could not have failed, and one — S4.2a — was invisible *because* the
 > code read like a correct implementation: clear docstring, named constants, a comment marking the
 > important line, all of it describing an intention rather than the behaviour. That is the
@@ -135,14 +137,30 @@ e2e figure in this table used to read 30; it had never been true — see S4.4c.
 > | S6.3b — one unreadable cell lost all 26 postings, in a function whose comment promised the opposite | feeding the loader the rows a CSV import actually produces | Possibly, by someone who checked the `except` against the coercions three lines above it |
 > | S6.3c — two postings with one id loaded fine and one could not be opened | asking whether the importer had to guarantee unique ids, and why | No - `{job.id: job for job in load_jobs()}` is the obvious line and says nothing about collisions |
 > | S6.3d — the README described a validation step that had never existed | reading the paragraph about replacing the corpus while writing the tool it described | No - there is no code to review; it is a claim in prose, and the sentence is plausible |
+> | S7.1a — a document with no text scored 28 out of 100 | uploading a file the parser could not read and reading the ten rows | No - each of the four rules is individually correct; they are wrong only about a document that has nothing in it |
+> | S7.1b — every accented name was replaced by a guess from the email | typing a name with an accent in it | No - `[A-Za-z.'-]+` sits under a comment saying "letters", and reads as exactly that |
+> | S7.1c — "The resume shows 1 skills" | reading the sentence a weak resume produced | Possibly, by someone who imagined the count being 1 |
+> | S7.1d — the testing plan claimed resumes are stored on disk | listing `storage/` while running the plan's own security section | Only by checking; S3.4a fixed three files and missed this one |
+> | S7.1e — a degraded-mode row tested a precondition producing the opposite behaviour | moving the artifact aside and reading the output instead of the row | No - it is a claim in prose about a mode nobody starts the server in |
+> | S7.1g — the first pytest run of a session errors on eleven tests | not re-running immediately, and reading the traceback | No - it is not in the code at all |
 >
-> S4.3b, S4.4c, S4.5c and S6.3d are one defect four times, in four costumes: a count in the
-> README, a count in eleven vault files, four examples in docstrings, and a sentence in the
-> README describing a safety net nobody had built. Prose that sits next to code and is
-> never run. For the first three the remedy was a test, three times, and all three now
-> exist. S6.3d is the one with no control: a *claim* about behaviour is not a path, a count
-> or an example, and nothing in the suite can hold it. It was caught by writing the tool
-> the sentence turned out to be describing.
+> S4.3b, S4.4c, S4.5c, S6.3d, S7.1d and S7.1e are one defect six times, in six costumes: a
+> count in the README, a count in eleven vault files, four examples in docstrings, a
+> sentence in the README describing a safety net nobody had built, a row in the testing plan
+> describing storage that had been deleted, and a row in the same plan describing a branch
+> that does not fire under the condition it names. Prose that sits next to code and is never
+> run. For the first three the remedy was a test, three times, and all three now exist. The
+> last three have no control: a *claim* about behaviour is not a path, a count or an
+> example, and nothing in the suite can hold one. S6.3d was caught by writing the tool the
+> sentence turned out to be describing; S7.1d and S7.1e were caught by running the document
+> they were written in. Which is the argument for running a checklist rather than reading it,
+> and the reason S7.1 exists as a story at all.
+>
+> S7.1a and S7.1b are the two that matter most, and they share a shape worth naming. Neither
+> is a wrong calculation. Both are a **plausible answer where there should have been none**:
+> 28 out of 100 for a file nobody can read, "Jose Alvarez" for a person called José Álvarez
+> Muñoz. A blank field gets questioned. A confident wrong answer gets believed, and both of
+> these were shown to the student as the finished product.
 
 ---
 
@@ -1731,9 +1749,141 @@ was rejected and why, and the worked numbers for one real example.
 
 **Goal:** demo day cannot surprise anyone.
 
-- [ ] **S7.1 — Run [[Complete Testing Plan]] end to end and record the results**
+- [x] **S7.1 — Run [[Complete Testing Plan]] end to end and record the results**
+  **AC:** every section a machine can run has been run and its result written down; every
+  section that cannot be is named, with what it is blocked on.
+  **Evidence:** [[Complete Testing Plan — v1.0]], 2026-09-02. Eight of the eleven sections
+  green — §0, §1, §2 (one open), §4, §5, §7, §8, §9. Three not run and not ticked: **§3**
+  needs fifteen consented resumes (S7.2), **§6.1–6.5** and the two frontend rows of §9 need
+  a browser, **§10** needs a deployment (S7.4) and **§11** needs an audience (S7.5).
+  `pytest` **416 passed**, smoke green at 11.7 ms warm, `e2e_check.py` **29/29 on the
+  transformer backend and 29/29 on the hashing fallback**, `npm run typecheck` and
+  `npm run build` clean. Section 4 and section 5 were run over real HTTP against a server
+  with the transformer backend **and** a trained classifier — the configuration
+  `conftest.py` deliberately excludes, so none of those 72 checks is covered by the suite.
+  *Seven defects, S7.1a–g. Two of them Major, both invisible to a green suite and both
+  about a report the student reads rather than a number the tests assert.*
+
+- [x] **S7.3 — Fix everything the two runs surface, or log it as accepted** *(brought
+  forward: S7.1's half is done, S7.2's half is not)*
+  **AC:** every defect in the run record is fixed with a test that fails without the fix,
+  or logged with the reason it is not being fixed.
+  **Evidence:** five fixed, one accepted, one open on a decision. Sixteen new tests, and
+  each fix was reverted to watch its test go red before being put back. `pytest` 400 → 416.
+  The §3 and §6 halves of this story stay open until S7.2 and a browser pass exist to
+  surface anything.
+
+- [x] **S7.1a — Defect: a document with no text at all scored 28 out of 100** *(unplanned, Major)*
+  **Cause:** six of the ten ATS rules score the *absence* of a fault, and a document with
+  no text commits none of them. A 100×100 image renamed `.pdf` collected **layout 15/15
+  ("Single column"), tone 5/5 ("no clichés"), length 5/10 and dates 2.5/5** — 27.5 points
+  for a file containing zero characters. Every genuine scan scored the same way, which is
+  worse, because a scan is a resume somebody meant to submit.
+  Twenty-eight was not a miscalculation. It was the right answer to *how few faults can be
+  found in a document nobody can read*, which is not the question the student asked.
+  **Fix:** `_unreadable_report()` in `ats.py`. The rules still run — they supply the ids,
+  titles and points — and each result is then replaced by a zero that says why. The trigger
+  is `has_text_layer`, the judgement `extract` has already made and already reports to the
+  user, so the score and the warning cannot come to disagree about what "unreadable" means.
+  **Evidence:** the scanned PDF in §2.1 scored 28 before and **0** after.
+  `TestUnreadableDocumentScoresNothing`, five tests.
+  *This is S4.7c one layer up. There the fix was to stop rule 7 handing fifteen free points
+  to a resume with no skills; nobody had asked the same question about the file with no
+  text. A defect class is not fixed until you have looked for the rest of it.*
+
+- [x] **S7.1b — Defect: every accented name was replaced by a guess from the email address** *(unplanned, Major)*
+  **Cause:** the header-line name rule tested characters with `[A-Za-z.'\-]+`, above a
+  comment reading *"Names are letters, spaces, dots and apostrophes - nothing else."* The
+  comment is right and the code was not: `[A-Za-z]` is one alphabet, not letters. Every
+  name with an accent in it failed the test, fell through to the email fallback, and was
+  reported as the de-punctuated local part. A resume headed **José Álvarez Muñoz** was
+  shown back to its owner as **"Jose Alvarez"** — accents stripped, surname gone. With no
+  email address on the page the name was lost outright.
+  Silent, and worse than silent: a guess rebuilt from an email address is indistinguishable
+  in the report from a name that was actually read.
+  **Fix:** `_is_name_word()` tests Unicode categories **L and M**. The marks matter as much
+  as the letters — Devanagari and Tamil write vowels as combining marks, category Mn, which
+  `\w` excludes, so a test for "letters" written with `\w` reads as script-neutral and
+  quietly is not.
+  **Evidence:** eight tests, five scripts. `José Álvarez Muñoz`, `Zoë Fernández`,
+  `François Dubois`, `Björn Andersen`, `किरण आनंदन` and `கிரண் ஆனந்தன்` all now read exactly.
+  *Nothing in a 400-test suite could have caught this: every fixture in the repository is
+  named in ASCII. The fixture set was the blind spot, not the assertion.*
+
+- [x] **S7.1c — Defect: "The resume shows 1 skills that this role's postings ask for"** *(unplanned, Minor)*
+  **Cause:** four user-facing strings interpolated a count straight into a plural noun, so
+  each read correctly at every value except the one a weak resume is most likely to produce.
+  Six other places in the same file already write `phrase(s)` for exactly this.
+  **Fix:** `text_utils.plural()`. **Evidence:** `TestCountsAgreeWithTheirNouns`.
+  *No assertion in the suite reads a sentence, so all four were green for as long as they
+  existed. The `(s)` idiom is fine in a terse detail line and poor in a fix written to be
+  read; that is why this got a helper rather than four more `(s)`.*
+
+- [x] **S7.1d — Defect: the testing plan claimed resumes are stored on disk** *(unplanned, Note)*
+  **Cause:** §8's first row read *"Uploaded files are stored under `backend/storage/`"* —
+  the claim **S3.4a** deleted from `config.py`, `.env.example` and the README, still sitting
+  in the one section of the plan a reviewer reads to check what happens to personal data.
+  **Fix:** the row now states what happens — nothing is written to disk; only extracted text
+  is persisted, in `app.db` — and says which row it replaced.
+  *S3.4a fixed three files and missed the fourth. A claim removed from the code is not
+  removed from the project.*
+
+- [x] **S7.1e — Defect: §9 tested a precondition that produces the opposite behaviour** *(unplanned, Note)*
+  **Cause:** *"With `artifacts/role_classifier.joblib` absent, ATS rule 7 awards full points
+  and says why."* It does not. Removing the artifact drops the classifier to the `profile`
+  backend, which still supplies role keywords, so rule 7 scores **normally** — measured
+  15/15 on the good resume and 1.88/15 on the weak one. The full-points branch fires when
+  the classifier cannot run **at all**.
+  **Fix:** the row now describes the fallback, and the real condition is pointed at the
+  test that already holds it, `TestKeywordRuleWithNothingToScore`.
+  *Found by moving the artifact aside and reading the output instead of the row. The row
+  had never been run — it is in a section that only gets exercised in a mode nobody
+  normally starts the server in.*
+
+- [ ] **S7.1f — Open: a `.png` renamed `.pdf` is accepted rather than rejected** *(unplanned, Minor)*
+  **AC:** either `extract` rejects it, or §2.1's row changes — and the record says which,
+  and why.
+  PyMuPDF opens an image as a one-page document, so the file takes the scanned-PDF path:
+  201, **score 0**, and the warning *"most likely a scan or an exported image… Re-export the
+  resume as a text PDF"*. §2.1 asks for a clear error.
+  *Recommendation is to leave the behaviour and rewrite the row: the file really is an
+  image with no text layer, the message really does say so, and "re-export as a text PDF"
+  is more use to a student than `400 unreadable_file`. It is a product call, and it was not
+  made before S7.1a, because until then this file scored 28 out of 100 and the row was
+  right for a reason that no longer applies.*
+
+- [x] **S7.1g — Accepted: the first pytest run of a session reports eleven errors** *(unplanned, Note)*
+  **Cause, at last:** `ImportError: DLL load failed while importing _ufuncs_cxx: An
+  Application Control policy has blocked this file` — and `_ni_label` on the second run, so
+  it is not one bad file. Windows Application Control evaluates scipy's compiled extensions
+  the first time a process asks for them and blocks them until it has.
+  Reproduced twice (`389 passed, 11 errors`), then green for the rest of the session,
+  including after clearing every `__pycache__` and `.pytest_cache` — so it is not the cache,
+  which is what the 2026-09-01 note had assumed without saying so.
+  **Not fixed — environment, not code.** Written up in
+  [[Troubleshooting#The first pytest run of a session reports eleven errors]] with the
+  warm-up that avoids it, because on a fresh machine the suite's first run is red and that
+  is the first thing a new developer does after `pip install`.
+  *The 2026-09-01 note asked whoever saw it next to capture the traceback before re-running
+  anything. That instruction is the entire reason it is solved. A symptom recorded honestly
+  and left open is cheaper than a cause written from a guess.*
+
+- [x] **S7.1h — `scripts/check_vault_links.py`** *(unplanned)*
+  **AC:** the link-integrity figure in "Last verified" comes from a command.
+  **Evidence:** **487 links checked in 24 notes: 487 resolve, 0 missing notes, 0 broken
+  anchors, 0 wrapped across a line.** All four checks were proved by breaking one of each
+  and watching it fail, then restoring. Exits non-zero, so it gates.
+  Two things the hand count got wrong and this does not: `[[#Anchor]]` links to a heading in
+  the *same* note were never checked against anything (the board's velocity table is built
+  out of eleven of them), and the four literal `[[link]]` examples were counted as links
+  that do not resolve, when they are inside backticks and are not links at all. Which is
+  why 487/487 is not the same measurement as 476/472 and the table says so.
+  *That figure had been produced by hand four times. Adding one note to the vault is what
+  made the fifth time worth automating rather than repeating.*
+
 - [ ] **S7.2 — Run [[Customer Testing Plan]] with at least five real students**
-- [ ] **S7.3 — Fix everything the two runs surface, or log it as accepted**
+  *Also unblocks §3 of the testing plan, which is the parser accuracy figure the project
+  report needs and the one number this release does not have.*
 - [ ] **S7.4 — Deploy both halves and re-run `e2e_check.py` against the deployed URL**
 - [ ] **S7.5 — Rehearse the demo against the deployed build, not localhost**
 - [ ] **S7.6 — Settle the pooling question on judged pairs** *(opened by S5.6b)*

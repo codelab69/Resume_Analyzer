@@ -77,10 +77,10 @@ thresholds; the score is the arithmetic.
 
 ---
 
-## Five things that were wrong
+## Seven things that were wrong
 
 Rules that are pure functions of the document are easy to test and were not tested nearly
-enough. All five below were found by feeding each rule the input it exists to judge.
+enough. All seven below were found by feeding each rule the input it exists to judge.
 
 ### Rule 10 scored the format its own advice recommends at zero
 
@@ -178,11 +178,61 @@ SKILLS section because nothing else on the page can be scored until it is there.
 resume now scores **39/100**. The genuine "classifier unavailable" branch keeps its full
 marks, and its wording no longer blames a trained model that was never the reason.
 
+### A document with no text at all scored 28 out of 100
+
+Rule 7's defect above has a larger version of itself, and it took S7.1 to find it. Six of
+the ten rules score the **absence** of a fault. A document with no text commits none of
+them, so it collects their points for free.
+
+A 100×100 image renamed `.pdf` — zero characters extracted — scored:
+
+| Rule | Earned | What it said |
+|---|---|---|
+| `layout` | **15.0 / 15** | "Single column on all 1 page(s)." |
+| `tone` | **5.0 / 5** | no clichés, no first-person pronouns |
+| `length` | 5.0 / 10 | partial credit |
+| `dates` | 2.5 / 5 | partial credit |
+| everything else | 0 | |
+| **total** | **28 / 100** | band: `poor` |
+
+Every genuine scan scored the same way, which is the case that matters — a scan is a resume
+somebody meant to submit, and "Single-column, parser-friendly layout ✓ 15/15" on a file an
+applicant tracking system reads as blank is worse than useless.
+
+Twenty-eight is not a miscalculation. It is the correct answer to *how few faults can be
+found in a document nobody can read*, which is not the question the student asked. The
+question they asked is what an ATS will make of this file, and the answer is nothing at all.
+
+**Fix:** `evaluate` checks `document.has_text_layer` and, when there is no text, hands every
+result to `_unreadable_report`, which zeroes it and replaces the detail with "No readable
+text was found, so this rule could not be scored". The score is **0**, and the fix text on
+every row says to re-export as a text PDF. The rules still run — they are what supplies the
+ids, titles and points, so zeroing them cannot silently drop one.
+
+The trigger is deliberately `has_text_layer` and not a second character count: that flag is
+the judgement [[Text Extraction]] has already made and already reports to the user as a
+warning. Two definitions of "unreadable" in two modules is two things that can disagree.
+
 ### Rule 9 read "i.e." as writing about yourself
 
 `\b(?:i|me|my|mine|myself)\b` under `re.I` matches the `i` in **i.e.** and in **i/o**. A
 bullet reading *"Reduced i/o wait on the disk"* cost a point for first-person tone. Fixed with
 a negative lookahead; a real pronoun still costs a point.
+
+### Four sentences disagreed with their own numbers
+
+"The resume shows **1 skills** that this role's postings commonly ask for." Also
+"**1 role-relevant skills** out of 1 detected", "Only **0 of 4** bullets start with a strong
+verb", and "Only 1 of 4 bullets contain a number". Four strings interpolating a count
+straight into a plural noun, so each read correctly at every value except the one a weak
+resume is most likely to produce.
+
+**Fix:** `text_utils.plural()`, which the four now use. Six other places in this file already
+wrote `phrase(s)` for the same problem — fine in a terse detail line, poor in a fix written
+to be read by a student who is already being told their resume is weak.
+
+*No assertion in the suite reads a sentence, which is why all four were green for as long as
+they existed.*
 
 ### The module told you to run a test file that does not exist
 
@@ -262,8 +312,10 @@ and 25 ms in [[Skill Matching]]. Scoring is free; the inputs are what cost.
 ## Tests that hold this in place
 
 `backend/tests/test_scoring.py` — `TestDateConsistencyRule` (7), `TestQuantifiedRule` (3),
-`TestKeywordRuleWithNothingToScore` (3) and `TestToneRule` (2), **15 new**, alongside the
-existing structural tests that assert the points total 100 and every score lands in 0–100.
+`TestKeywordRuleWithNothingToScore` (3), `TestToneRule` (2),
+`TestUnreadableDocumentScoresNothing` (5) and `TestCountsAgreeWithTheirNouns` (3),
+**23 in total**, alongside the existing structural tests that assert the points total 100
+and every score lands in 0–100.
 
 | Mutation | Fails |
 |---|---|
@@ -273,6 +325,10 @@ existing structural tests that assert the points total 100 and every score lands
 | Bare years count as figures again | `test_a_bare_year_is_not_an_achievement` |
 | No skills takes the "unavailable" branch again | `test_no_skills_scores_zero_not_fifteen`, `test_end_to_end_a_resume_with_no_skills_loses_the_rule` |
 | A bare `i` is a pronoun again | `test_i_e_is_not_a_first_person_pronoun` |
+| The unreadable-document guard is removed | `test_the_total_is_zero_not_twenty_eight`, `test_no_rule_awards_a_point_for_an_absent_fault`, `test_every_rule_says_why_it_could_not_be_scored` |
+| The guard is widened until it swallows short resumes | `test_a_readable_resume_is_untouched_by_the_guard` |
+| Zeroing the rules drops one of them | `test_the_registry_still_totals_one_hundred_points` |
+| A count is interpolated into a plural noun again | `test_rule_seven_does_not_say_one_skills` |
 
 The first mutation also fails `test_every_docstring_example_runs_and_passes`, because
 `count_date_forms` carries a doctest — the control added in S4.5c catching a regression in a

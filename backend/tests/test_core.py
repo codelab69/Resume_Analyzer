@@ -850,6 +850,44 @@ class TestEntities:
         header = "python\nKiran Anandan"
         assert entities._extract_name(header, None) == "Kiran Anandan"
 
+    # -- S7.1b: a name is letters in any alphabet, not letters in one -------
+
+    def test_an_accented_name_is_read_from_the_page(self):
+        """The character test was `[A-Za-z.'-]+`, so every accented name failed
+        it and fell through to the email fallback below. A resume headed
+        "José Álvarez Muñoz" was reported to its owner as "Jose Alvarez":
+        accents stripped, surname gone, and no warning anywhere, because a
+        guess rebuilt from an email address is indistinguishable from a name
+        that was actually read.
+        """
+        header = "José Álvarez Muñoz\njose.alvarez@example.com | +91 9876543210"
+        assert entities._extract_name(header, "jose.alvarez@example.com") == "José Álvarez Muñoz"
+
+    @pytest.mark.parametrize("name", [
+        "Zoë Fernández",        # diaeresis and acute
+        "François Dubois",       # cedilla
+        "Björn Andersen",       # umlaut
+        "किरण आनंदन",             # Devanagari: the vowels are combining marks, not letters
+        "கிரண் ஆனந்தன்",           # Tamil, the same
+    ])
+    def test_names_in_other_scripts_survive(self, name):
+        # The marks matter as much as the letters. `\w` excludes category Mn,
+        # so a test for "letters only" written with `\w` reads as
+        # script-neutral and quietly is not.
+        assert entities._extract_name(name + "\nx@example.com", "x@example.com") == name
+
+    def test_the_email_fallback_still_runs_when_there_is_no_name_line(self):
+        # Widening the character test must not cost the fallback that covers a
+        # header with no name on it at all.
+        assert entities._extract_name("SUMMARY\nkiran@example.com", "kiran@example.com") == "Kiran"
+
+    def test_a_digit_still_disqualifies_a_name_line(self):
+        # "Rahul Kumar (2026 batch)" is the line the sentence guard above
+        # depends on being rejected.
+        assert entities._is_name_word("Kumar") is True
+        assert entities._is_name_word("(2026") is False
+        assert entities._is_name_word("Muñoz") is True
+
     # -- S4.4a: contact patterns --------------------------------------------
 
     def test_github_link_does_not_swallow_a_sentence_full_stop(self):

@@ -150,7 +150,7 @@ The middle one is the one that runs. "Looks like a name" means: not a label word
 email or phone on the line, at most five words, and every word made only of letters, dots,
 apostrophes and hyphens — the dots being there for initials, `K. Anandan`.
 
-That test has been wrong in two directions at once.
+That test has been wrong in three directions at once.
 
 #### Trap 1 — a sentence fits the shape
 
@@ -189,6 +189,50 @@ not.
 > does not hold the fix in place. The guard needed a header where no name line survives at
 > all (`Rahul Kumar (2026 batch)`, rejected for the bracket, with the sentence beneath it).
 > A fix with no failing mutation is a fix nobody can prove is load-bearing.
+
+#### Trap 3 — "letters" meant twenty-six of them
+
+The sentence above this section says *"every word made only of letters, dots, apostrophes
+and hyphens"*. The code said:
+
+```python
+if not all(re.fullmatch(r"[A-Za-z.'\-]+", w) for w in words):
+    continue
+```
+
+Which is not letters. It is one alphabet. **Every name with an accent in it failed this
+test**, fell past the header rule entirely, and landed on the third attempt — the email
+fallback. So a resume headed `José Álvarez Muñoz` was reported back to its owner as:
+
+| | reported name |
+|---|---|
+| before | `Jose Alvarez` |
+| after | **`José Álvarez Muñoz`** |
+
+Accents stripped, surname dropped, and nothing anywhere saying a substitution had happened.
+With no email address on the page the name was lost outright and the field came back `null`.
+
+This is the worst shape a defect in this stage can take. A blank name field gets noticed and
+questioned. A plausible name, spelled almost right, reconstructed from an address, is
+indistinguishable in the report from a name that was actually read off the page.
+
+**The guard:** `_is_name_word()` accepts Unicode categories **L** and **M**, plus the name
+punctuation. The marks are not an afterthought — Devanagari, Tamil and Arabic write vowels
+as combining marks, which are category `Mn` and are **not** matched by `\w`. A "letters
+only" test written with `\w` reads as script-neutral and quietly is not: it accepts `José`
+and rejects `किरण`.
+
+Verified across five scripts — `José Álvarez Muñoz`, `Zoë Fernández`, `François Dubois`,
+`Björn Andersen`, `किरण आनंदन`, `கிரண் ஆனந்தன்` — and the two guards above still hold: a
+digit still disqualifies a line, so `Rahul Kumar (2026 batch)` is still rejected and the
+sentence test still has the header it needs.
+
+> [!note] Why 400 passing tests could not have caught this
+> Every resume fixture in the repository is named in ASCII. The assertion was fine; the
+> **input set** was the blind spot. Trap 1 and Trap 2 were both found by a fixture chosen to
+> be a bad resume — nobody had chosen a fixture to be a differently-spelled one. Found by
+> [[Complete Testing Plan — v1.0]] §2.3, the row that asks for "accented and non-ASCII
+> characters", which had been on the checklist unrun since the plan was written.
 
 ### The degree lexicon, and two abbreviations that spell English words
 
@@ -435,7 +479,7 @@ Three derived properties are read downstream rather than stored: `highest_degree
 
 ## Tests that hold this in place
 
-`backend/tests/test_core.py::TestEntities` — **31 tests**, 21 of them new. Every fix above was
+`backend/tests/test_core.py::TestEntities` — **39 tests**, 29 of them new. Every fix above was
 mutation-tested: the fix was reverted, the suite run, and the failing test named. A fix
 whose mutation broke nothing did not count as covered.
 
@@ -447,6 +491,10 @@ whose mutation broke nothing did not count as covered.
 | the whole pre-S4.4 side pattern | the three above, plus `test_raw_range_carries_no_leading_separator` |
 | the sentence guard | `test_a_sentence_is_not_a_name_when_no_name_line_survives` |
 | one-word names | `test_a_sentence_in_the_header_is_not_read_as_a_name` |
+| the Unicode letter class, back to `[A-Za-z]` | `test_an_accented_name_is_read_from_the_page` and all five cases of `test_names_in_other_scripts_survive` |
+| the category `M` half of it | the Devanagari and Tamil cases of the same |
+| the email fallback, now that the header rule is wider | `test_the_email_fallback_still_runs_when_there_is_no_name_line` |
+| the digit check, widening the class too far | `test_a_digit_still_disqualifies_a_name_line` |
 | the capitalisation guard on degrees | `test_the_word_be_is_not_a_bachelor_of_engineering`, `..._me_is_not_a_master_...` |
 | checking every degree match | `test_a_stray_lowercase_match_does_not_hide_a_real_degree` |
 | the dot in the GitHub class | `test_github_link_does_not_swallow_a_sentence_full_stop` |

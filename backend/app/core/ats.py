@@ -32,7 +32,7 @@ from app.core.entities import Entities
 from app.core.extract import ExtractedDocument
 from app.core.segment import SegmentedResume
 from app.core.skills import SkillHit
-from app.core.text_utils import bullets, clamp, first_word, lines, pct
+from app.core.text_utils import bullets, clamp, first_word, lines, pct, plural
 
 # Fractions of bullets that must satisfy a rule to earn full points.
 ACTION_VERB_TARGET = 0.70
@@ -401,8 +401,8 @@ def rule_action_verbs(text: str, action_verbs: set[str], **_) -> RuleResult:
     fix = ""
     if earned < 8.5:
         fix = (
-            f"Only {strong} of {len(items)} bullets start with a strong verb. "
-            "Start each one with an action word - Built, Automated, Reduced, "
+            f"{strong} of {plural(len(items), 'bullet')} start with a strong "
+            "verb. Start each one with an action word - Built, Automated, Reduced, "
             "Led - instead of a noun or 'Responsible for'."
         )
         if weak_examples:
@@ -438,7 +438,7 @@ def rule_quantified(text: str, **_) -> RuleResult:
     fix = ""
     if earned < 12.75:
         fix = (
-            f"Only {counted} of {len(items)} bullets contain a number. Add "
+            f"{counted} of {plural(len(items), 'bullet')} contain a number. Add "
             "figures wherever you can: how many users, how much faster, how "
             "many records, what percentage. \"Reduced page load from 4s to "
             "1.2s\" beats \"Improved performance\"."
@@ -496,8 +496,8 @@ def rule_keywords(
             id="keywords", title="Skill keywords match the target role", points=15,
             earned=15.0, status="pass",
             detail=(
-                f"{len(found)} skills detected. Role-specific keyword scoring "
-                "did not run, so this rule is not counted against the resume."
+                f"{plural(len(found), 'skill')} detected. Role-specific keyword "
+                "scoring did not run, so this rule is not counted against the resume."
             ),
         )
 
@@ -510,8 +510,8 @@ def rule_keywords(
     if earned < 12.75:
         suggestions = sorted(role_keywords - found)[:5]
         fix = (
-            f"The resume shows {len(overlap)} skills that this role's postings "
-            "commonly ask for."
+            f"The resume shows {plural(len(overlap), 'skill')} that this "
+            "role's postings commonly ask for."
         )
         if suggestions:
             fix += (
@@ -522,7 +522,8 @@ def rule_keywords(
     return RuleResult(
         id="keywords", title="Skill keywords match the target role", points=15,
         earned=round(earned, 2), status=_grade(earned, 15),
-        detail=f"{len(overlap)} role-relevant skills out of {len(found)} detected.",
+        detail=f"{plural(len(overlap), 'role-relevant skill')} out of "
+               f"{len(found)} detected.",
         fix=fix,
     )
 
@@ -709,5 +710,64 @@ def evaluate(
     )
 
     results = [rule(**context) for rule in RULES]
+
+    if not document.has_text_layer or not document.text.strip():
+        return _unreadable_report(results)
+
     total = sum(result.earned for result in results)
     return AtsReport(score=int(round(total)), rules=results)
+
+
+def _unreadable_report(results: list[RuleResult]) -> AtsReport:
+    """Zero every rule for a document that produced no readable text.
+
+    WHY THIS EXISTS
+    ---------------
+    Six of the ten rules score the *absence* of a fault. A document with no
+    text has committed none of them, so it collects their points for free:
+    a 100x100 image renamed `.pdf` scored **28 out of 100**, with "Single-
+    column, parser-friendly layout" marked PASS on a file containing zero
+    characters. Every genuine scan scored the same way.
+
+    Twenty-eight is not a wrong number in the way a miscalculation is wrong.
+    It is an answer to a question nobody asked: how few faults can be found
+    in a document that cannot be read. The question the student asked is what
+    an applicant tracking system will make of this file, and the answer to
+    that is nothing at all.
+
+    So the rules still run - they are what supplies the ids, titles and
+    points, and running them keeps this function from restating the registry -
+    but each result is replaced by a zero that says why. The document-level
+    warning from `extract` ("this is most likely a scan, re-export it") is
+    already on the report and says what to do about it.
+
+    This is S4.7c's defect one layer up. There the fix was to stop rule 7
+    awarding fifteen free points to a resume with no skills; the same
+    reasoning had never been applied to the file that has no text either.
+
+    The trigger is `has_text_layer`, which `extract` has already set by
+    running both PDF readers and comparing the result against
+    SCANNED_PDF_THRESHOLD. Re-deciding "is there text here" with a second
+    character count in this module would give the score and the warning two
+    definitions of unreadable that could disagree. DOCX and TXT never set the
+    flag, so a very short but genuinely readable resume is scored as before.
+    """
+    return AtsReport(
+        score=0,
+        rules=[
+            RuleResult(
+                id=result.id,
+                title=result.title,
+                points=result.points,
+                earned=0.0,
+                status="fail",
+                detail="No readable text was found, so this rule could not be scored.",
+                fix=(
+                    "Re-export the resume as a text PDF from your editor, or "
+                    "upload the .docx, and try again. Nothing on this page can "
+                    "be measured until the file has selectable text in it."
+                ),
+            )
+            for result in results
+        ],
+    )

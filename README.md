@@ -291,9 +291,10 @@ backend/
     main.py       app assembly, CORS, lifespan warmup, error handler
   data/           skills, headings, action verbs, job corpus — all JSON/text
   scripts/        smoke_test.py, e2e_check.py, validate_skills.py,
-                  train_classifier.py, import_jobs.py
+                  train_classifier.py, import_jobs.py, tune_weights.py,
+                  check_vault_links.py
   artifacts/      generated models — not in git, see below
-  tests/          374 tests plus fixtures
+  tests/          416 tests plus fixtures
 frontend/
   src/
     routes/       six screens
@@ -314,7 +315,7 @@ without a server and reusable outside one.
 
 ```bash
 cd backend
-pytest -q                        # 374 unit and integration tests, and rising
+pytest -q                        # 416 unit and integration tests, and rising
 python scripts/smoke_test.py     # the pipeline, no server
 python scripts/e2e_check.py      # real HTTP against a running server
 

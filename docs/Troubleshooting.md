@@ -350,17 +350,43 @@ than doing something.
 | `TestScriptPathsInTheCode` fails | Something names `scripts/<name>.py` that does not exist, without saying so nearby | Either write the script or mark the mention `not yet written` within 200 characters. **S4.6c**, widened by **S5.2a** |
 | `validate_skills.py` exits non-zero | A real ontology error: a duplicate canonical name, a colliding alias, an empty alias list, an unknown category | Fix the data. Warnings do not fail it — on the shipped ontology there are 44, every one of them "has no aliases" |
 | `e2e_check.py` prints `FAIL Server is not reachable at …` | No server on that URL | `uvicorn app.main:app --port 8000` in another terminal. It takes `--url`, so it works against a deployment too |
+| `check_vault_links.py` exits non-zero | A wikilink in `docs/` points at a note or a heading that is not there, or is split across a line — which Obsidian does not match and a reader's eye does not catch | Fix the link. `scripts/check_vault_links.py` is what produces the link-integrity figure in [[Sprint Board]]'s "Last verified" table; run it after editing any note |
 | Tests are green and the app is broken | The suite uses an in-process client. CORS, multipart encoding and the ASGI server itself are only exercised by `e2e_check.py` | Run it. That is why it exists |
 
-> [!note] One thing seen once and not explained
-> On the first suite run of a session on 2026-09-01 — a cold process, 62 s — the eleven
-> tests depending on the `train_classifier_module` fixture ended in `ERROR` at setup;
-> `363 passed, 11 errors`. Four subsequent runs, including after clearing every
-> `__pycache__` and `.pytest_cache`, gave `374 passed` in about 6 s, and the eleven pass
-> in isolation. The traceback was not captured and the cause is **not known**. It is
-> recorded here rather than explained, because a cause written from a guess is the
-> failure this project keeps finding. If it recurs, capture the traceback before
-> re-running anything.
+### The first pytest run of a session reports eleven errors
+
+**Symptom.** The first `pytest` of the session ends `389 passed, 11 errors` — always the
+eleven tests that reach scikit-learn through the `train_classifier_module` fixture. Run it
+again and it is green. This was first seen on 2026-09-01 as `363 passed, 11 errors`, went
+unexplained for a day, and was reproduced twice on 2026-09-02.
+
+**Cause.** Windows Application Control is blocking scipy's compiled extensions the first
+time a process asks for them:
+
+```
+ImportError: DLL load failed while importing _ufuncs_cxx:
+An Application Control policy has blocked this file.
+```
+
+The second run named a different DLL — `_ni_label`, from `scipy.ndimage` — so it is not one
+bad file. The policy evaluates each binary the first time it is loaded, and once it has,
+the file loads for the rest of the session.
+
+**Fix.** Run the suite twice. There is nothing to fix in this repository, and nothing in the
+eleven errors is about this project.
+
+**What it costs anyway.** On a fresh machine the suite's *first* run is red, which is the
+first thing a new developer does after `pip install`. Say so before they hit it — that is
+what this section is for. If you want the green run without waiting, `python -c "import
+scipy.special, scipy.ndimage"` once, first, and the policy will have evaluated both by the
+time pytest starts.
+
+> [!note] What kept this open for a day
+> The original note here said the cause was "not known" and asked whoever saw it next to
+> capture the traceback before re-running anything. That instruction is the whole reason
+> it is solved: the error text names the cause outright, and the first two runs of the
+> S7.1 session were the first ones nobody re-ran in a hurry. A symptom recorded honestly
+> and left open is cheaper than a cause written from a guess.
 
 ---
 

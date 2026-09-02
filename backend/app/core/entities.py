@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -123,8 +124,32 @@ _INSTITUTION_HINT = re.compile(
     re.I,
 )
 
+# Punctuation that may appear inside a name: initials, O'Brien, Anne-Marie.
+# Both apostrophes, because a resume written in Word has the curly one.
+_NAME_PUNCTUATION = frozenset(".'-’")
+
+
+def _is_name_word(word: str) -> bool:
+    """True when every character could belong to a name, in any script.
+
+    "Letter" here means the Unicode categories L* and M*, not `[A-Za-z]`.
+    The marks matter as much as the letters: Devanagari, Tamil and Arabic
+    write vowels as combining marks, which are category Mn and are therefore
+    *not* matched by `\\w`. Testing for letters alone reads as script-neutral
+    and is not - it accepts José and rejects किरण.
+
+    See `_extract_name` for what the ASCII-only version of this test cost.
+    """
+    if not word:
+        return False
+    return all(
+        ch in _NAME_PUNCTUATION or unicodedata.category(ch)[0] in ("L", "M")
+        for ch in word
+    )
+
+
 # A single initial, "K." - the one thing allowed to end a name in a full stop.
-_INITIAL = re.compile(r"[A-Za-z]\.")
+_INITIAL = re.compile(r"[^\W\d_]\.")
 
 # Lines in the header that are labels, not names.
 _NOT_A_NAME = re.compile(
@@ -401,7 +426,18 @@ def _extract_name(preamble: str, email: str | None) -> str | None:
         if not (0 < len(words) <= 5):
             continue
         # Names are letters, spaces, dots and apostrophes - nothing else.
-        if not all(re.fullmatch(r"[A-Za-z.'\-]+", w) for w in words):
+        #
+        # That sentence has been here since the beginning and is correct. The
+        # code under it was not: "letters" was spelled `[A-Za-z]`, which is one
+        # alphabet. Every accented name failed the test, fell past this loop and
+        # landed on the email fallback below, so a resume headed "José Álvarez
+        # Muñoz" was reported back to its owner as "Jose Alvarez" - accents
+        # stripped, surname gone, and nothing anywhere saying a substitution had
+        # happened, because a guess rebuilt from an email address is
+        # indistinguishable from a name that was read. With no email on the page
+        # the name was lost outright. Nothing in the suite could have caught it:
+        # every resume fixture in this repository is named in ASCII.
+        if not all(_is_name_word(w) for w in words):
             continue
         # The dot above is there for initials ("K. Anandan"). It also lets a
         # short sentence through, because every word in "I did my engineering."
