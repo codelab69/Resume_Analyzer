@@ -235,7 +235,7 @@ export function ReportScreen() {
                             type="button"
                             onClick={() => toggleFocus(name)}
                             aria-pressed={isFocused}
-                            className={`px-2 py-0.5 text-[13px] transition-colors ${
+                            className={`px-2 py-1 text-[13px] transition-colors ${
                               isFocused ? "mark-active" : "mark"
                             }`}
                           >
