@@ -25,18 +25,23 @@ stays unticked; this is the run.
 |---|---|---|
 | 0. Entry criteria | **Pass** | transformer backend, trained classifier, 26 postings |
 | 1. Automated suites | **Pass** | 416 pytest in 6.5 s, smoke green, e2e 29/29 both modes, build clean |
-| 2. Parser robustness | **Pass, 1 open** | 31 of 32 synthesised-file checks; defect 6 open |
+| 2. Parser robustness | **Pass** | 32 of 32 synthesised-file checks; defect 6 fixed after the run |
 | 3. Extraction accuracy | **Not run** | no consented resume set exists — S7.2 |
 | 4. Scoring correctness | **Pass** | 30 checks over real HTTP, after defects 1 and 3 |
 | 5. API contract | **Pass** | 42 checks, every endpoint against its own schema |
-| 6. Frontend | **Pass, 1 open** | Chromium 69/69, Firefox 67/67, WebKit 66/66, 2 device profiles; S7.1l open |
+| 6. Frontend | **Pass** | Chromium 69/69, Firefox 67/67, WebKit 66/66, 2 device profiles; S7.1l fixed after the run |
 | 7. Performance | **Pass** | every row inside target, no drift over ten uploads |
 | 8. Data and security | **Pass** | 12 checks |
 | 9. Degraded mode | **Pass** | API and frontend halves both green |
 | 10. Deployment | **Not run** | nothing is deployed — S7.4 |
 | 11. Demo rehearsal | **Not run** | S7.5 |
 
-**Eleven defects found. Eight fixed, one accepted, two open and needing a decision.**
+**Eleven defects found. Ten fixed, one accepted as an environment issue, none open.**
+
+The two that were left open — the renamed `.png` and the undersized tap targets —
+were both decisions rather than bugs. They were filed as
+[#1](https://github.com/codelab69/Resume_Analyzer/issues/1) and
+[#2](https://github.com/codelab69/Resume_Analyzer/issues/2), decided, and fixed.
 
 ---
 
@@ -153,8 +158,10 @@ Warm total **11.7 ms**: extract 0.2, segment 1.1, entities 6.2, skills 1.2, clas
       exported image… Re-export the resume as a text PDF". Before defect 1 was fixed this
       file scored **28/100**
 - [x] Password-protected PDF → 400 `unreadable_file`, message names the password, no stack trace
-- [ ] Corrupt file (`.png` renamed `.pdf`) → **defect 6, open.** Accepted with 201 and
-      scored 0/100 with the scan warning, rather than rejected. See the defect table
+- [x] Corrupt file (`.png` renamed `.pdf`) → 400, *"This file is named .pdf but it is a
+      PNG image. Open the resume in Word, Google Docs or your editor and use Export or
+      Save as PDF - renaming the file does not convert it."* Was defect 6; fixed after the
+      run, see below. A genuine scan is unaffected and still takes the scanned-PDF path
 - [x] `.doc` renamed `.docx` → 400 `unreadable_file`, "it may be an older .doc file renamed to .docx"
 
 ### 2.2 Layouts

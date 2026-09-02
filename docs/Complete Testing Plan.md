@@ -111,11 +111,12 @@ Assemble a folder of at least 15 real resumes before this section — collected 
 - [ ] `.txt` file
 - [ ] Scanned / image-only PDF → **must be rejected with the "this is a scan" message**, not silently scored 0
 - [ ] Password-protected PDF → clear error, no stack trace
-- [ ] Corrupt file (rename a `.png` to `.pdf`) → clear error. **This row is disputed —
-      see S7.1f.** PyMuPDF opens an image as a one-page document, so the file currently
-      takes the scanned-PDF path: 201, score 0, and "most likely a scan or an exported
-      image… Re-export the resume as a text PDF". Decide whether that is the clear error
-      this row wants before ticking or failing it
+- [ ] Corrupt file (rename a `.png` to `.pdf`) → clear error **that names the format**:
+      *"This file is named .pdf but it is a PNG image."* A generic "could not be opened"
+      sends the reader hunting for a corrupt file; naming the format tells them they
+      renamed a screenshot, which is what actually happened. Check `.jpg`, a `.docx` and
+      a `.doc` too — each gets its own sentence, and the `.docx` one says to rename it
+      back rather than to export a PDF, because this app reads `.docx`
 - [ ] `.doc` renamed to `.docx` → clear error naming the real problem
 
 ### 2.2 Layouts

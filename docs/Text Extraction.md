@@ -47,6 +47,10 @@ one object.
 ## Reader strategy
 
 ```
+is there a %PDF- header in the first 1 KB?  ──no──►  reject, naming the format
+   │
+  yes
+   ▼
 PyMuPDF  ──►  ≥ 200 chars?  ──yes──►  use it
    │                │
    │                no
@@ -57,6 +61,41 @@ PyMuPDF  ──►  ≥ 200 chars?  ──yes──►  use it
                              ▼
                     has_text_layer = False, warn the user it is a scan
 ```
+
+### The header check, and why it is not the readers' job
+
+PyMuPDF opens an **image** as a one-page document. So a screenshot renamed `.pdf` used to
+go all the way through both readers, produce zero characters, fall out of the bottom of
+this diagram, and be returned as a successfully analysed resume carrying the scanned-PDF
+warning — `201 Created`, and the advice *"re-export as a text PDF from your editor"*,
+which is no use whatsoever to somebody holding a PNG.
+
+A PDF begins `%PDF-`. Checking for it in the first kilobyte — readers scan rather than
+test byte zero, because a stray newline or BOM in front of the header is a real thing —
+costs one comparison and turns a wrong answer into the right one:
+
+```
+This file is named .pdf but it is a PNG image. Open the resume in Word,
+Google Docs or your editor and use Export or Save as PDF - renaming the
+file does not convert it.
+```
+
+Thirteen signatures are recognised, and naming the format is most of the value. *"This PDF
+could not be opened"* sends a reader hunting for a corrupt file; *"this is a PNG image"*
+tells them what they actually did. The `.docx` case gets its own sentence — **rename it
+back**, not export a PDF — because this app reads `.docx` directly, and the generic advice
+would send someone through a conversion they do not need.
+
+> [!important] A genuine scan is not caught by this, and must not be
+> A scanned resume is an image *inside* a PDF container. It still starts with `%PDF-`, so
+> it passes the header check and takes the branch at the bottom of the diagram exactly as
+> before. That branch is the whole reason this stage distinguishes "no text" from
+> "unreadable": a scan is a resume somebody meant to submit, and it needs to be told that
+> an ATS cannot read it — not refused at the door. `test_a_genuine_scan_is_still_accepted`
+> exists to keep the guard from ever growing into that case.
+
+See issue [#1](https://github.com/codelab69/Resume_Analyzer/issues/1) and S7.1f on
+[[Sprint Board]].
 
 **PyMuPDF first** because it is fast and hands back geometry. **pdfplumber second**
 because it fails differently — the two libraries disagree on enough malformed PDFs that
@@ -335,6 +374,16 @@ test, by name:
 
 ATS rule 3 itself had **no tests at all** before this, which is how it came to be scoring
 a genuine two-column resume 15/15. It now has six, in `TestLayoutRule`.
+
+`TestFileNamedPdfThatIsNotOne` holds the header check — fourteen tests, six of them a
+parametrised sweep over the recognised signatures. Two of them exist to stop the guard
+growing:
+
+| Mutation | Caught by |
+|---|---|
+| refuse anything with no text, not just anything with no header | `test_a_genuine_scan_is_still_accepted` |
+| test byte zero instead of scanning the first kilobyte | `test_a_header_behind_leading_junk_is_still_a_pdf` |
+| scan the whole file for `%PDF-` rather than the first kilobyte | `test_the_guard_does_not_read_past_its_window` |
 
 ---
 

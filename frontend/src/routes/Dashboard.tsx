@@ -206,7 +206,12 @@ export function DashboardScreen() {
                     <Link
                       to={`/report/${row.id}`}
                       onClick={() => setResumeId(row.id)}
-                      className="underline-offset-4 hover:underline"
+                      // The cell has py-2; the link inside it had none, so the
+                      // tap target was the 18px text and nothing else. Growing
+                      // into the cell's own padding and cancelling it with a
+                      // negative margin gets a 34px target without moving the
+                      // row by a pixel. See issue #2.
+                      className="inline-block -my-2 py-2 underline-offset-4 hover:underline"
                     >
                       {row.filename}
                     </Link>
@@ -231,7 +236,9 @@ export function DashboardScreen() {
                       type="button"
                       onClick={() => remove.mutate(row.id)}
                       disabled={remove.isPending}
-                      className="font-mono text-[11px] text-muted underline-offset-4 hover:underline disabled:opacity-40"
+                      // Same as the link above: grow into the cell's padding
+                      // so the target clears 24px, take it back with -my-2.
+                      className="inline-block -my-2 py-2 font-mono text-[11px] text-muted underline-offset-4 hover:underline disabled:opacity-40"
                       style={{ color: "var(--color-bad)" }}
                     >
                       DELETE

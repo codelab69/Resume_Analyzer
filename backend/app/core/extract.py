@@ -142,7 +142,77 @@ def extract(data: bytes, filename: str) -> ExtractedDocument:
 # ---------------------------------------------------------------------------
 
 
+# What a file claims to be, by its first few bytes. Only formats a student
+# plausibly renames to `.pdf` are here - a screenshot, a phone photo, a saved
+# web page - because the point is to name the file back to them, not to be a
+# general-purpose sniffer.
+_EXPORT_ADVICE = (
+    "Open the resume in Word, Google Docs or your editor and use Export or "
+    "Save as PDF - renaming the file does not convert it."
+)
+_SIGNATURES: list[tuple[bytes, str, str]] = [
+    (b"\x89PNG\r\n\x1a\n", "a PNG image", _EXPORT_ADVICE),
+    (b"\xff\xd8\xff", "a JPEG image", _EXPORT_ADVICE),
+    (b"GIF87a", "a GIF image", _EXPORT_ADVICE),
+    (b"GIF89a", "a GIF image", _EXPORT_ADVICE),
+    (b"BM", "a BMP image", _EXPORT_ADVICE),
+    (b"RIFF", "a WEBP image", _EXPORT_ADVICE),
+    (b"II*\x00", "a TIFF image", _EXPORT_ADVICE),
+    (b"MM\x00*", "a TIFF image", _EXPORT_ADVICE),
+    # A .docx *is* a zip. Telling someone holding one to export a PDF is worse
+    # advice than telling them to rename it back, because this app reads .docx.
+    (b"PK\x03\x04", "a .docx or another zip archive",
+     "If it is a Word document, rename it back to .docx and upload that - "
+     "this reads .docx directly, and no export step is needed."),
+    (b"\xd0\xcf\x11\xe0", "an older Microsoft Office file, probably a .doc",
+     "Open it in Word and use Save as - either .docx or PDF works here."),
+    (b"{\\rtf", "an RTF document", _EXPORT_ADVICE),
+    (b"MZ", "a Windows program", _EXPORT_ADVICE),
+    (b"\x7fELF", "a Linux program", _EXPORT_ADVICE),
+]
+
+# The header may sit behind a little leading junk, so readers scan rather than
+# check byte zero. 1024 is what the specification suggests and what PyMuPDF
+# itself allows.
+_PDF_HEADER_WINDOW = 1024
+
+
+def _describe_not_a_pdf(data: bytes) -> str:
+    """Name the file the student actually uploaded, when it is not a PDF.
+
+    Naming the format is most of the value. "This PDF could not be opened" sends
+    someone looking for a corrupt file; "this is a PNG image" tells them they
+    renamed a screenshot, which is what actually happened.
+    """
+    for signature, description, advice in _SIGNATURES:
+        if data.startswith(signature):
+            return f"This file is named .pdf but it is {description}. {advice}"
+    return (
+        "This file is named .pdf but it has no PDF header, so it is not a PDF. "
+        "Export the resume as a PDF from your editor rather than renaming it, "
+        "or upload the .docx instead."
+    )
+
+
 def _extract_pdf(data: bytes) -> ExtractedDocument:
+    # A PDF begins `%PDF-`. Without that this is not a PDF, and saying so is
+    # worth doing here rather than letting the readers cope.
+    #
+    # PyMuPDF opens an image as a one-page document, so a screenshot renamed
+    # `.pdf` used to sail past both readers, produce zero characters, and come
+    # back as a *successfully analysed resume* carrying the scanned-PDF warning
+    # - a real answer to a question the file could not be asked. That was
+    # tolerable while it also scored 28 out of 100 and merely looked odd; once
+    # S7.1a made an unreadable document score 0, the remaining problem was that
+    # the advice was wrong. "Re-export as a text PDF" is useless to someone
+    # holding a PNG, and "this is a PNG, use Export as PDF" is not.
+    #
+    # A genuine scan is unaffected: it is an image *inside* a PDF container and
+    # still starts with `%PDF-`, so it takes the branch at the bottom of this
+    # function exactly as before. See issue #1 and S7.1f.
+    if b"%PDF-" not in data[:_PDF_HEADER_WINDOW]:
+        raise ExtractionFailed(_describe_not_a_pdf(data))
+
     doc = _extract_pdf_pymupdf(data)
     if doc is not None:
         # A near-empty result means no text layer. Try pdfplumber before

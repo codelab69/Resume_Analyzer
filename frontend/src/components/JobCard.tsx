@@ -67,7 +67,11 @@ export function JobCard({ job, index }: Props) {
             type="button"
             onClick={() => setExpanded((value) => !value)}
             aria-expanded={expanded}
-            className="mt-3 font-mono text-[11px] uppercase tracking-wider text-muted underline-offset-4 hover:underline"
+            // 11px text with no vertical padding made this a 16.5px tap
+            // target - the disclosure on every job card, and the smallest
+            // control in the app. py-1.5 takes it to 28.5px; mt-2 rather than
+            // mt-3 keeps the gap above it looking the same. See issue #2.
+            className="mt-2 py-1.5 font-mono text-[11px] uppercase tracking-wider text-muted underline-offset-4 hover:underline"
           >
             {expanded ? "Hide details" : "What they ask for"}
           </button>

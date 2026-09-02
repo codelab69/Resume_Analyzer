@@ -51,7 +51,7 @@ same bar every time.
 | [[#Sprint 4 — Algorithm notes]] | Every algorithm written up for the viva | **Complete** — 9 notes, 13 defects, 2026-08-29 |
 | [[#Sprint 5 — Guides and reference]] | A stranger can set it up unaided | **Complete** — 7 stories, 4 defects, 2026-09-01 |
 | [[#Sprint 6 — Maintenance tooling]] | The data files can be grown safely | **Complete** — 4 stories, 8 defects, 2026-09-01 |
-| [[#Sprint 7 — Release hardening]] | Demo-day proof | **In progress** — S7.1 and S7.3 done, 12 defects; S7.2, S7.4, S7.5, S7.6, S7.1f and S7.1l open |
+| [[#Sprint 7 — Release hardening]] | Demo-day proof | **In progress** — S7.1 and S7.3 done, 12 defects, all closed; S7.2, S7.4, S7.5 and S7.6 open |
 
 ---
 
@@ -62,7 +62,7 @@ that say otherwise in their own right-hand column:
 
 | Check | Result | Measured |
 |---|---|---|
-| `pytest` | **416 passed** in 6.5 s (120 at the start of Sprint 1, 322 before S6.2, 343 before S6.3, 374 before S5.4, 379 before S5.5, 382 before S6.4, 400 before S7.1). The +16 are S7.1a-c's tests. The **first two runs of the session** gave `389 passed, 11 errors` and the third onward gave 400 - the anomaly first seen on 2026-09-01, now reproduced and explained: Windows Application Control blocks scipy's compiled extensions until it has evaluated them. See S7.1g and [[Troubleshooting#The first pytest run of a session reports eleven errors]]. Run it twice on a fresh machine | 2026-09-02 |
+| `pytest` | **430 passed** in 6.7 s (120 at the start of Sprint 1, 322 before S6.2, 343 before S6.3, 374 before S5.4, 379 before S5.5, 382 before S6.4, 400 before S7.1, 416 before the two issues were fixed). The +30 are S7.1a-c's tests and the fourteen that hold the PDF header guard. The **first two runs of the session** gave `389 passed, 11 errors` and the third onward gave 400 - the anomaly first seen on 2026-09-01, now reproduced and explained: Windows Application Control blocks scipy's compiled extensions until it has evaluated them. See S7.1g and [[Troubleshooting#The first pytest run of a session reports eleven errors]]. Run it twice on a fresh machine | 2026-09-02 |
 | `scripts/smoke_test.py` | passed, TOTAL **11.7 ms** warm on the transformer backend (extract 0.2, segment 1.1, entities 6.2, skills 1.2, classify 1.9, ats 1.1). Within noise of the 11.1 ms measured on 2026-09-01; these are timings on a shared laptop, not a benchmark, and only an order-of-magnitude change means anything. Not comparable with the 201 ms of 2026-08-29: that run was cold, and since S6.2c the script warms up before it times anything | 2026-09-02 |
 | `scripts/import_jobs.py`, round trip | the shipped 26 postings exported to CSV and imported back: **26 read, 26 accepted, 0 rejected, every field identical** through `load_jobs`. The written file spells out `"url": null`, which the hand-written corpus omits; nothing else differs | 2026-08-31, not re-run since |
 | `scripts/e2e_check.py` against live uvicorn | **29/29 on the transformer backend** with a trained classifier on disk, **and 29/29 with the transformer forced off**, against two servers on two ports. Run both ways every time: S5.4 is a note about the degraded path, and running it once on the good backend would not have tested that claim | 2026-09-02 |
@@ -70,7 +70,7 @@ that say otherwise in their own right-hand column:
 | `npm run typecheck` and `npm run build` | `tsc --noEmit` clean; build clean, no chunk-size warning, 1052 modules, 7.0 s, largest chunk `charts` 368.45 kB (108.04 kB gzipped). All four vendor chunks split as intended | 2026-09-02 |
 | All three checks from a **clean venv built only from `requirements.txt`** | pytest 184 at the time, smoke passed, e2e 29/29 | 2026-08-27, not re-run since |
 | Vault link integrity | **498 links checked in 24 notes: 498 resolve, 0 point at a note that does not exist, 0 broken anchors, 0 wrapped across a line.** This figure now comes from `scripts/check_vault_links.py` rather than from counting by hand — see S7.1h, and all four of its checks were proved by breaking one of each and watching it fail. Not directly comparable with the 476/472 of 2026-09-01: the script excludes inline code, so the four literal `[[link]]` examples that used to be counted-but-unresolved are now not counted at all, and one note has been added since | 2026-09-02 |
-| [[Complete Testing Plan]], sections a machine can run | **§0, §1, §2, §4, §5, §6, §7, §8, §9 green.** §2 and §6 each carry one open decision, S7.1f and S7.1l. **§3, §10 and §11 were not run** and are not ticked anywhere - they need consented resumes, a deployment and an audience. Full record in [[Complete Testing Plan — v1.0]] | 2026-09-02 |
+| [[Complete Testing Plan]], sections a machine can run | **§0, §1, §2, §4, §5, §6, §7, §8, §9 green, with nothing open.** The two decisions §2 and §6 were carrying, S7.1f and S7.1l, were filed as issues, decided and fixed. **§3, §10 and §11 were not run** and are not ticked anywhere - they need consented resumes, a deployment and an audience. Full record in [[Complete Testing Plan — v1.0]] | 2026-09-02 |
 | [[Complete Testing Plan]] §6, in real browsers | **Chromium 69/69, Firefox 67/67, WebKit 66/66**, plus Pixel 7 and iPhone 14 device profiles. Contrast measured over **163 text/background pairs per theme**: lowest 4.57 light, 4.82 dark - both were failing before S7.1j and S7.1k, dark at **1.12**. Every screen at 360, 390 and 412 px reports `scrollWidth == clientWidth`. WebKit skips the 8 links when tabbing, which is Safari's default rather than a defect - see S7.1m. Lighthouse not run: Chrome-only tool, not installed | 2026-09-02 |
 | Performance, on the machine that will run the demo | Cold start **9.0-14.3 s** transformer / **2.2-4.0 s** hashing, spread over five and three starts on a laptop that was doing other things; upload+analyse **54.9 ms**, cached **5.1 ms**, match **178.8 ms**, recommendations **62.4 ms** - every row inside its target, medians of five. Ten consecutive uploads showed no drift (first-five median 48 ms, last-five 48 ms). The embedding model loaded **once** across **207** requests in one process. Frontend first contentful paint **604 ms** on the production build (520-676, n=5), against a 2 s target - and **192 ms** with the Google Fonts CDN blocked, which is the number that matters for a rehearsal with the network off | 2026-09-02 |
 
@@ -1853,17 +1853,29 @@ was rejected and why, and the worked numbers for one real example.
   had never been run — it is in a section that only gets exercised in a mode nobody
   normally starts the server in.*
 
-- [ ] **S7.1f — Open: a `.png` renamed `.pdf` is accepted rather than rejected** *(unplanned, Minor)*
-  **AC:** either `extract` rejects it, or §2.1's row changes — and the record says which,
-  and why.
-  PyMuPDF opens an image as a one-page document, so the file takes the scanned-PDF path:
-  201, **score 0**, and the warning *"most likely a scan or an exported image… Re-export the
-  resume as a text PDF"*. §2.1 asks for a clear error.
-  *Recommendation is to leave the behaviour and rewrite the row: the file really is an
-  image with no text layer, the message really does say so, and "re-export as a text PDF"
-  is more use to a student than `400 unreadable_file`. It is a product call, and it was not
-  made before S7.1a, because until then this file scored 28 out of 100 and the row was
-  right for a reason that no longer applies.*
+- [x] **S7.1f — Defect: a `.png` renamed `.pdf` was accepted rather than rejected** *(unplanned, Minor)*
+  **Cause:** PyMuPDF opens an image as a one-page document, so a screenshot renamed
+  `.pdf` sailed past both readers, produced zero characters, and came back as a
+  *successfully analysed resume* carrying the scanned-PDF warning: `201`, and advice to
+  "re-export as a text PDF", which is no use at all to somebody holding a PNG.
+  **The decision, and who made it.** This was left open deliberately with a recommendation
+  to *leave* the behaviour and rewrite the plan's row — the file really is an image with
+  no text layer and the message really did say so. Filed as
+  [#1](https://github.com/codelab69/Resume_Analyzer/issues/1) with both options written
+  out. The call came back: fix it.
+  **Fix:** `_extract_pdf` checks for `%PDF-` in the first kilobyte before either reader
+  runs, and `_describe_not_a_pdf` names the format back:
+  *"This file is named .pdf but it is a PNG image."* Thirteen signatures, and the `.docx`
+  case gets its own sentence telling the reader to rename it back rather than export a
+  PDF — because this app reads `.docx`, and generic advice would be worse advice.
+  **Evidence:** 14 tests. PNG, JPEG, GIF, docx, doc and .exe are each named; an
+  unrecognised non-PDF still says "no PDF header"; **a genuine scan is still accepted**,
+  which is the one that matters — a scan is an image *inside* a PDF container, still
+  starts with `%PDF-`, and is a resume somebody meant to submit. A header behind leading
+  whitespace still counts, and a `%PDF-` four kilobytes into a PNG does not.
+  *The recommendation to leave it was made when the same upload also scored 28 out of
+  100. Once S7.1a fixed that, what was left was not a wrong score but wrong advice, and
+  wrong advice is worth four lines.*
 
 - [x] **S7.1g — Accepted: the first pytest run of a session reports eleven errors** *(unplanned, Note)*
   **Cause, at last:** `ImportError: DLL load failed while importing _ufuncs_cxx: An
@@ -1930,15 +1942,30 @@ was rejected and why, and the worked numbers for one real example.
   **Evidence:** light theme's lowest pair went 4.00 → **4.57** over 163 measured pairs.
   Dark's muted token was already fine and is untouched.
 
-- [ ] **S7.1l — Open: the skill chips are half a pixel under the WCAG minimum tap target** *(unplanned, Minor)*
-  **AC:** either the chips reach 24 × 24 CSS px, or the decision not to is recorded.
-  Measured on a Pixel 7 and an iPhone 14 profile: all 19 chips are exactly **23.50 px**
-  tall (13 px text, 19.5 px line-height, 2 px padding each side). WCAG 2.2 SC 2.5.8 at AA
-  asks for 24 × 24. `py-0.5` → `py-1` in `Report.tsx` takes them to 27.5 px.
-  *Not fixed here on purpose. Tap-target size is not a row in [[Complete Testing Plan]],
-  the change is visible on every report, and half a pixel is close enough to the line that
-  it is a design call rather than a defect fix. It is the control a student taps most on a
-  phone, though, which is the argument for making it.*
+- [x] **S7.1l — Defect: four controls were under the WCAG minimum tap target** *(unplanned, Minor)*
+  **Cause:** no vertical padding on interactive text. Measured on Pixel 7 and iPhone 14
+  profiles, against WCAG 2.2 SC 2.5.8's 24 x 24 at AA:
+
+  | Control | Was | Now |
+  |---|---|---|
+  | Skill chips on the report, x19 | **23.5 px** | 27.5 px |
+  | Job card disclosure, x12 | **16.5 px** | 28.5 px |
+  | Resume name in the history table | **18 px** | 34 px |
+  | DELETE in the history table | **15.7 px** | 31.7 px |
+
+  **Fix:** `py-1` on the chip; `py-1.5` with `mt-3` → `mt-2` on the disclosure; and in the
+  table, `inline-block -my-2 py-2`, which grows the target into the cell's own padding and
+  takes the height back with a negative margin — so the hit area doubles and the row does
+  not move. Verified: row heights 37.5 px before and after.
+  The four identically padded chips elsewhere are `<span>` labels. The criterion is about
+  targets, so they are left alone.
+  **Evidence:** `check_frontend.py --mobile`, both profiles, **0 under size across all six
+  screens**, plus screenshots of the two changed layouts.
+  *Filed as [#2](https://github.com/codelab69/Resume_Analyzer/issues/2) — and the issue
+  understated it. It named 19 chips, because the check only ran on the report screen.
+  Widening it to all six found 18 more on two other screens, one of them the smallest
+  control in the app. A check that runs in one place measures one place, which is the
+  same mistake as S5.2a: a control that existed, passed, and had the wrong scope.*
 
 - [x] **S7.1m — §6 of the plan is no longer unrunnable** *(unplanned)*
   **AC:** the frontend rows are measured rather than reasoned about.

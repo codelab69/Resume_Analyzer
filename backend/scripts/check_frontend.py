@@ -917,26 +917,31 @@ def run_mobile():
                   page.evaluate("() => matchMedia('(hover: none)').matches"))
 
             # WCAG 2.2 SC 2.5.8 asks for 24x24 CSS px on anything tappable.
-            page.goto(f"{BASE}/report/{rid}", wait_until="networkidle")
-            page.wait_for_timeout(1200)
-            small = page.evaluate("""() => {
-              const out = [];
-              for (const e of document.querySelectorAll('a[href], button')) {
-                const r = e.getBoundingClientRect();
-                if (r.width < 1 || r.height < 1) continue;
-                if (r.height < 24 || r.width < 24)
-                  out.push((e.textContent || e.getAttribute('aria-label') || '?')
-                             .trim().slice(0, 18)
-                           + ' ' + r.width.toFixed(1) + 'x' + r.height.toFixed(1));
-              }
-              return out;
-            }""")
-            if small:
-                note(f"{device}: tap targets under the WCAG 2.2 minimum of 24x24",
-                     f"{len(small)} under size, e.g. {small[:3]} - open as S7.1l, "
-                     f"a design call rather than a defect fix")
-            else:
-                check(f"{device}: every tap target clears 24x24 CSS px", True)
+            # Every screen, not just the report: a target that is too small on
+            # one screen says nothing about the others, and this check used to
+            # run on `/report` alone, which is where the one failure happened
+            # to be.
+            small = []
+            for label, path in [("Landing", "/"), ("Upload", "/upload"),
+                                ("Report", f"/report/{rid}"), ("Match", f"/match/{rid}"),
+                                ("Openings", f"/jobs/{rid}"), ("History", "/dashboard")]:
+                page.goto(f"{BASE}{path}", wait_until="networkidle")
+                page.wait_for_timeout(1100)
+                small += [f"{label}: {x}" for x in page.evaluate("""() => {
+                  const out = [];
+                  for (const e of document.querySelectorAll('a[href], button')) {
+                    const r = e.getBoundingClientRect();
+                    if (r.width < 1 || r.height < 1) continue;
+                    if (r.height < 24 || r.width < 24)
+                      out.push((e.textContent || e.getAttribute('aria-label') || '?')
+                                 .trim().slice(0, 18)
+                               + ' ' + r.width.toFixed(1) + 'x' + r.height.toFixed(1));
+                  }
+                  return out;
+                }""")]
+            check(f"{device}: every tap target on all six screens clears 24x24 CSS px",
+                  not small,
+                  f"{len(small)} under size, e.g. {small[:3]}" if small else "checked six screens")
             ctx.close()
             browser.close()
 

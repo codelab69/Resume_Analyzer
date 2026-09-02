@@ -235,7 +235,15 @@ export function ReportScreen() {
                             type="button"
                             onClick={() => toggleFocus(name)}
                             aria-pressed={isFocused}
-                            className={`px-2 py-0.5 text-[13px] transition-colors ${
+                            // py-1, not py-0.5: 13px text on a 19.5px line
+                            // height plus 2px of padding came to 23.5px, and
+                            // WCAG 2.2 SC 2.5.8 asks for 24. Half a pixel, on
+                            // the control a phone user taps most on this
+                            // screen. 4px of padding takes it to 27.5.
+                            // The identically padded chips elsewhere are all
+                            // <span> labels, so the criterion does not reach
+                            // them - only this one is a target. See issue #2.
+                            className={`px-2 py-1 text-[13px] transition-colors ${
                               isFocused ? "mark-active" : "mark"
                             }`}
                           >

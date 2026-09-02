@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import io
 import csv
 import json
 import os
@@ -349,6 +350,120 @@ class TestPdfReaderIntegration:
             "the sidebar must finish before the main column starts: %r" % lines
         )
 
+
+class TestFileNamedPdfThatIsNotOne:
+    """Issue #1 / S7.1f. A renamed screenshot was analysed instead of refused.
+
+    PyMuPDF opens an image as a one-page document, so a `.png` renamed `.pdf`
+    got all the way through both readers, produced zero characters, and came
+    back as a **successfully analysed resume** carrying the scanned-PDF
+    warning: `201 Created`, and advice to "re-export as a text PDF", which is
+    no help at all to somebody holding a PNG.
+
+    The scan branch is what made it plausible, and the scan branch must keep
+    working - a genuine scan is an image *inside* a PDF container, still starts
+    with `%PDF-`, and is a resume somebody meant to submit. So the guard is on
+    the container, not on whether text came out.
+    """
+
+    @staticmethod
+    def _png() -> bytes:
+        return bytes.fromhex("89504e470d0a1a0a") + b"\x00" * 64
+
+    def test_a_png_renamed_pdf_is_refused(self):
+        with pytest.raises(extract.ExtractionFailed) as caught:
+            extract.extract(self._png(), "resume.pdf")
+        assert "PNG image" in str(caught.value)
+
+    def test_the_message_names_the_format_rather_than_blaming_the_pdf(self):
+        # "This PDF could not be opened" sends someone hunting for a corrupt
+        # file. Naming the format tells them what they actually did.
+        message = str(
+            pytest.raises(extract.ExtractionFailed,
+                          extract.extract, self._png(), "resume.pdf").value
+        )
+        assert "PNG" in message
+        assert "renaming" in message.lower() or "rename" in message.lower()
+
+    @pytest.mark.parametrize("signature,expected", [
+        (bytes.fromhex("89504e470d0a1a0a"), "PNG"),
+        (b"\xff\xd8\xff\xe0", "JPEG"),
+        (b"GIF89a", "GIF"),
+        (b"PK\x03\x04", "docx"),
+        (b"\xd0\xcf\x11\xe0", ".doc"),
+        (b"MZ\x90\x00", "Windows program"),
+    ])
+    def test_each_recognised_format_is_named_back_to_the_user(self, signature, expected):
+        with pytest.raises(extract.ExtractionFailed) as caught:
+            extract.extract(signature + b"\x00" * 80, "resume.pdf")
+        assert expected in str(caught.value)
+
+    def test_a_docx_renamed_pdf_is_told_to_rename_it_back(self):
+        # This app reads .docx. Telling someone holding one to export a PDF is
+        # worse advice than telling them to undo the rename, so this case gets
+        # its own sentence rather than the generic one.
+        with pytest.raises(extract.ExtractionFailed) as caught:
+            extract.extract(b"PK\x03\x04" + b"\x00" * 80, "resume.pdf")
+        message = str(caught.value)
+        assert ".docx" in message
+        assert "rename it back" in message
+        # Not "asserting the word 'export' is absent" - the sentence says "no
+        # export step is needed", which contains the word and means the
+        # opposite. What must be absent is the generic instruction.
+        assert "Save as PDF" not in message
+
+    def test_an_unrecognised_non_pdf_still_says_it_is_not_a_pdf(self):
+        with pytest.raises(extract.ExtractionFailed) as caught:
+            extract.extract(b"this is just prose, not a document" * 4, "resume.pdf")
+        assert "no PDF header" in str(caught.value)
+
+    def test_a_real_pdf_is_unaffected(self):
+        fitz = pytest.importorskip("fitz", reason="PyMuPDF not installed")
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "Kiran Anandan " * 30, fontsize=10, fontname="helv")
+        data = doc.tobytes()
+        doc.close()
+        assert extract.extract(data, "resume.pdf").char_count > 200
+
+    def test_a_genuine_scan_is_still_accepted(self):
+        """The whole point of the guard is that it does not catch this.
+
+        An image-only PDF has no text either, and refusing it would throw away
+        the one case the scanned-PDF branch exists for: a resume somebody
+        really did submit, that really cannot be read, and that needs to be
+        told so rather than rejected at the door.
+        """
+        fitz = pytest.importorskip("fitz", reason="PyMuPDF not installed")
+        Image = pytest.importorskip("PIL.Image", reason="Pillow not installed")
+        buf = io.BytesIO()
+        Image.new("L", (600, 850), "white").save(buf, format="JPEG", quality=50)
+        doc = fitz.open()
+        page = doc.new_page(width=595, height=842)
+        page.insert_image(fitz.Rect(0, 0, 595, 842), stream=buf.getvalue())
+        data = doc.tobytes()
+        doc.close()
+
+        document = extract.extract(data, "scan.pdf")
+        assert document.has_text_layer is False
+        assert any("scan" in w.lower() for w in document.warnings)
+
+    def test_a_header_behind_leading_junk_is_still_a_pdf(self):
+        # Readers scan the first kilobyte rather than checking byte zero, and
+        # files with a stray newline or BOM in front of the header are real.
+        fitz = pytest.importorskip("fitz", reason="PyMuPDF not installed")
+        doc = fitz.open()
+        doc.new_page().insert_text((72, 72), "Kiran Anandan " * 30, fontsize=10,
+                                   fontname="helv")
+        data = doc.tobytes()
+        doc.close()
+        assert extract.extract(b"\r\n\r\n" + data, "resume.pdf").char_count > 200
+
+    def test_the_guard_does_not_read_past_its_window(self):
+        # A `%PDF-` a megabyte into a PNG is not a PDF header.
+        payload = bytes.fromhex("89504e470d0a1a0a") + b"\x00" * 4096 + b"%PDF-1.7"
+        with pytest.raises(extract.ExtractionFailed):
+            extract.extract(payload, "resume.pdf")
 
 class TestUnreadablePdfMessage:
     """S5.4a. Two different failures that used to print one sentence.

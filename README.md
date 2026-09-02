@@ -300,7 +300,7 @@ backend/
                   train_classifier.py, import_jobs.py, tune_weights.py,
                   check_vault_links.py, check_frontend.py
   artifacts/      generated models — not in git, see below
-  tests/          416 tests plus fixtures
+  tests/          430 tests plus fixtures
 frontend/
   src/
     routes/       six screens
@@ -321,7 +321,7 @@ without a server and reusable outside one.
 
 ```bash
 cd backend
-pytest -q                        # 416 unit and integration tests, and rising
+pytest -q                        # 430 unit and integration tests, and rising
 python scripts/smoke_test.py     # the pipeline, no server
 python scripts/e2e_check.py      # real HTTP against a running server
 
